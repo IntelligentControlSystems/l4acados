@@ -29,6 +29,7 @@ class ZoroAcadosCustomUpdate():
         h_tightening_idx=[],
         path_json_ocp="zoro_ocp_solver_config.json",
         path_json_sim="zoro_sim_solver_config.json",
+        build_c_code=True
     ):
         """
         ocp: AcadosOcp for nominal problem
@@ -86,12 +87,13 @@ class ZoroAcadosCustomUpdate():
         self.setup_custom_update()
 
         if use_cython:
-            AcadosOcpSolver.generate(self.ocp, json_file = path_json_ocp)
-            AcadosOcpSolver.build(self.ocp.code_export_directory, with_cython=True)
-            self.ocp_solver = AcadosOcpSolver.create_cython_solver(path_json_ocp)
+            if build_c_code:
+                AcadosOcpSolver.generate(self.ocp, json_file = path_json_ocp)
+                AcadosOcpSolver.build(self.ocp.code_export_directory, with_cython=True)
+                AcadosSimSolver.generate(self.sim, json_file = path_json_sim)
+                AcadosSimSolver.build(self.sim.code_export_directory, with_cython=True)
 
-            AcadosSimSolver.generate(self.sim, json_file = path_json_sim)
-            AcadosSimSolver.build(self.sim.code_export_directory, with_cython=True)
+            self.ocp_solver = AcadosOcpSolver.create_cython_solver(path_json_ocp)
             self.sim_solver = AcadosSimSolver.create_cython_solver(path_json_sim)
         else:
             self.ocp_solver = AcadosOcpSolver(self.ocp, json_file = path_json_ocp)

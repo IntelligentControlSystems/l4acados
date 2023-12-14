@@ -30,6 +30,7 @@ import torch
 import gpytorch
 
 # zoRO imports
+import zero_order_gpmpc
 from zero_order_gpmpc import ZoroAcados, ZoroAcadosCustomUpdate
 from inverted_pendulum_model_acados import export_simplependulum_ode_model, export_ocp_nominal
 from utils import base_plot, add_plot_trajectory, EllipsoidTubeData2D
@@ -56,6 +57,9 @@ from gpytorch_utils.gp_model import MultitaskGPModel, BatchIndependentMultitaskG
 # $$
 #
 # The model setup and controller definition can be found in the functions `export_simplependulum_ode_model()`, `export_ocp_nominal()` in the `inverted_pendulum_model_acados.py` file.
+
+# build C code again?
+build_c_code = True
 
 # +
 # discretization
@@ -229,7 +233,8 @@ acados_integrator = AcadosSimSolver(sim, json_file = 'acados_sim_' + sim.model.n
 # solve with zoRO (no GP model, only process noise)
 zoro_solver_nogp = ZoroAcados(
     ocp_zoro_nogp, sim, prob_x, Sigma_x0, Sigma_W, 
-    h_tightening_jac_sig_fun=h_tighten_jac_sig_fun
+    h_tightening_jac_sig_fun=h_tighten_jac_sig_fun,
+    use_cython=False
 )
 
 for i in range(N):
@@ -412,7 +417,8 @@ ocp_zoro = deepcopy(ocp_zoro_nogp)
 zoro_solver = ZoroAcados(
     ocp_zoro, sim, prob_x, Sigma_x0, Sigma_W, 
     h_tightening_jac_sig_fun=h_tighten_jac_sig_fun, 
-    gp_model=gp_model
+    gp_model=gp_model,
+    use_cython=False
 )
 
 for i in range(N):
@@ -438,16 +444,15 @@ idh_tight = np.array([0]) # lower on theta (theta >= 0)
 # integrator for nominal model
 sim_cupdate = AcadosSim()
 
-sim_cupdate.model = ocp_zoro_nogp.model
-sim_cupdate.parameter_values = ocp_zoro_nogp.parameter_values
+sim_cupdate.model = ocp_cupdate.model
+sim_cupdate.parameter_values = ocp_cupdate.parameter_values
 sim_cupdate.solver_options.integrator_type = "ERK"
 
 # set prediction horizon
 sim_cupdate.solver_options.T = dT
 
 # acados_ocp_solver = AcadosOcpSolver(ocp_init, json_file = 'acados_ocp_' + model.name + '.json')
-acados_integrator_cupdate = AcadosSimSolver(sim_cupdate, json_file = 'acados_sim_' + sim.model.name + '_cupdate.json')
-
+acados_integrator_cupdate = AcadosSimSolver(sim_cupdate, json_file = 'acados_sim_' + sim_cupdate.model.name + '_cupdate.json')
 
 # +
 # # %aimport zero_order_gpmpc
@@ -459,7 +464,7 @@ zoro_solver_cupdate = zero_order_gpmpc.ZoroAcadosCustomUpdate(
     ocp_cupdate, sim_cupdate, prob_x, Sigma_x0, Sigma_W, 
     h_tightening_idx=idh_tight, 
     gp_model=gp_model,
-    use_cython=False, #TODO: fix cython issue
+    use_cython=True, #TODO: fix cython issue
     path_json_ocp="zoro_ocp_solver_config_cupdate.json",
     path_json_sim="zoro_sim_solver_config_cupdate.json",
 )   
@@ -536,7 +541,8 @@ Sigma_W+Sigma_GP_prior
 # zoro_solver_gpprior = ZoroAcados(ocp_zoro_gpprior, sim, prob_x, Sigma_x0, Sigma_W+Sigma_GP_prior)
 zoro_solver_gpprior = ZoroAcados(
     ocp_zoro_gpprior, sim, prob_x, Sigma_x0, Sigma_W+Sigma_GP_prior, 
-    h_tightening_jac_sig_fun=h_tighten_jac_sig_fun
+    h_tightening_jac_sig_fun=h_tighten_jac_sig_fun,
+    use_cython=False
 )
 
 for i in range(N):
