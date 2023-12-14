@@ -27,7 +27,7 @@ class ZoroAcados():
         use_cython=True, 
         h_tightening_jac_sig_fun=None,
         h_tightening_idx=[],
-        path_json_ocp="zoro_sim_solver_config.json",
+        path_json_ocp="zoro_ocp_solver_config.json",
         path_json_sim="zoro_sim_solver_config.json"
     ):
         """

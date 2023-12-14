@@ -27,7 +27,7 @@ class ZoroAcadosCustomUpdate():
         use_cython=True, 
         h_tightening_jac_sig_fun=None,
         h_tightening_idx=[],
-        path_json_ocp="zoro_sim_solver_config.json",
+        path_json_ocp="zoro_ocp_solver_config.json",
         path_json_sim="zoro_sim_solver_config.json",
     ):
         """
@@ -177,7 +177,7 @@ class ZoroAcadosCustomUpdate():
                 time_integrate_set = perf_counter()
                 self.sim_solver.set("x", self.x_hat_all[stage,:])
                 self.sim_solver.set("u", self.u_hat_all[stage,:])
-                self.sim_solver.set("p", self.p_hat_model_with_Pvec[stage,:])
+                # self.sim_solver.set("p", self.p_hat_model[stage,:])
                 self.solve_stats["timings"]["integrate_set"][i] += perf_counter() - time_integrate_set
 
                 time_integrate_acados_python = perf_counter()
@@ -216,7 +216,6 @@ class ZoroAcadosCustomUpdate():
                 
                 self.P_bar_old_vec = self.P_bar_all_vec[stage+1] # used in next iter
                 self.P_bar_all_vec[stage+1] = sym_mat2vec(self.P_bar_all[stage+1])
-                self.p_hat_model_with_Pvec[stage+1,:int((self.nx+1)*self.nx/2)] = self.P_bar_all_vec[stage+1]
 
                 self.solve_stats["timings"]["propagate_covar"][i] += perf_counter() - time_propagate_covar
 
@@ -280,7 +279,7 @@ class ZoroAcadosCustomUpdate():
             self.solve_stats["timings"]["phase_one"][i] += perf_counter() - time_phase_one
 
             # Custom Update
-            do_custom_update(self, self.var)
+            self.do_custom_update(self.var)
 
 
             # ------------------- Solve QP --------------------
@@ -379,8 +378,8 @@ class ZoroAcadosCustomUpdate():
         custom_h_file = "custom_update_function_gpzoro.h"
 
         # copy custom update functions into acados
-        path_acados = os.environ.get("ACADOS_SOURCE_DIR")
-        path_acados_custom_update = os.path.join(path_acados, "custom_update_templates")
+        path_acados_source = os.environ.get("ACADOS_SOURCE_DIR")
+        path_acados_custom_update = os.path.join(path_acados_source, "interfaces", "acados_template", "acados_template", "custom_update_templates")
         shutil.copy(
             os.path.join(custom_update_source_dir, template_h_file),
             path_acados_custom_update,
@@ -420,7 +419,7 @@ class ZoroAcadosCustomUpdate():
         zoro_description.W_mat = self.Sigma_W
         """W in (nw, nw) describes the covariance of the noise on the system"""
 
-        zoro_description.idx_uh_t = self.tighten_idx
+        zoro_description.idx_lh_t = self.tighten_idx
         self.ocp.zoro_description = zoro_description
     
     def do_custom_update(self, gp_covariance: torch.Tensor) -> None:
@@ -456,13 +455,13 @@ class ZoroAcadosCustomUpdate():
             (
                 initial_covariance,
                 process_covariance,
-                gp_covariance.flatten().numpy(),
+                gp_covariance.flatten(),
             )
         )
 
         covariances_in_len = covariances_in.size
         out_arr = np.concatenate((covariances_in, -1.0 * np.ones(3 * (self.N + 1))))
-        self.acados_solver.custom_update(out_arr)
+        self.ocp_solver.custom_update(out_arr)
         assert np.all(
             out_arr[:covariances_in_len] == covariances_in
         ), "[rospy_controller]: do_custom_update: elements in the input covariances changed"
