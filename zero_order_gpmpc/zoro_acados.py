@@ -272,7 +272,8 @@ class ZoroAcados():
                 time_set_tightening = perf_counter()
 
                 # set constraints
-                self.ocp_solver.constraints_set(stage,"lh",lh.full().flatten())
+                if stage > 0:
+                    self.ocp_solver.constraints_set(stage,"lh",lh.full().flatten())
 
                 self.solve_stats["timings"]["set_tightening"][i] += perf_counter() - time_set_tightening
                 # self.solve_stats["timings"]["set_tightening_raw"][i] += t_set_C + t_set_lg + t_set_ug
