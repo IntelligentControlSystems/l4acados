@@ -60,7 +60,23 @@ class ResidualLearningMPC():
         self.p_hat_nonlin = np.array([ocp.parameter_values for _ in range(self.N)])
         self.p_hat_linmdl = np.array([self.ocp.parameter_values for _ in range(self.N)])
 
-        # build solver
+        self.has_residual_model = False
+        if residual_model is not None:
+            self.has_residual_model = True
+            self.residual_model = residual_model
+        
+        self.setup_solve_stats()
+        
+        self.build_c_code_done = False
+        if build_c_code:
+            self.build(use_cython=use_cython)
+    
+    
+    def build(self, 
+        use_cython=False, 
+        path_json_ocp="residual_lbmpc_ocp_solver_config.json",
+        path_json_sim="residual_lbmpc_sim_solver_config.json"
+    ):
         if use_cython:
             if build_c_code:
                 AcadosOcpSolver.generate(self.ocp, json_file = path_json_ocp)
@@ -74,22 +90,16 @@ class ResidualLearningMPC():
             self.ocp_solver = AcadosOcpSolver(self.ocp, json_file = path_json_ocp)
             self.sim_solver = AcadosSimSolver(self.sim, json_file = path_json_sim)
         
-        if residual_model is None:
-            self.has_residual_model = False
-        else:
-            self.has_residual_model = True
-            self.residual_model = residual_model
-
-        self.setup_solve_stats()
-
+        self.build_c_code_done = True
+        
     def solve(self, tol_nlp=1e-6, n_iter_max=30):
         time_total = perf_counter()
         self.init_solve_stats(n_iter_max)
 
         for i in range(n_iter_max):
             time_iter = perf_counter()
-            self.preparation()
-            self.feedback()
+            status_prep = self.preparation(i)
+            status_feed = self.feedback(i)
 
             # ------------------- Check termination --------------------
             # check on residuals and terminate loop.
@@ -102,8 +112,8 @@ class ResidualLearningMPC():
             self.solve_stats["timings"]["check_termination"][i] += perf_counter() - time_check_termination
             self.solve_stats["timings"]["total"][i] += perf_counter() - time_iter
 
-            if status != 0:
-                raise Exception('acados self.ocp_solver returned status {} in time step {}. Exiting.'.format(status, i))
+            if status_feed != 0:
+                raise Exception('acados self.ocp_solver returned status {} in time step {}. Exiting.'.format(status_feed, i))
 
             if max(residuals) < tol_nlp:
                 break
@@ -111,7 +121,7 @@ class ResidualLearningMPC():
         self.solve_stats["n_iter"] = i + 1
         self.solve_stats["timings_total"] = perf_counter() - time_total
 
-    def preparation(self):
+    def preparation(self, i):
         # ------------------- Query nodes --------------------
         time_query_nodes = perf_counter()
         # preparation rti_phase (solve() AFTER setting params to get right Jacobians)
@@ -122,7 +132,7 @@ class ResidualLearningMPC():
             # current stage values
             self.x_hat_all[stage,:] = self.ocp_solver.get(stage,"x")   
             self.u_hat_all[stage,:] = self.ocp_solver.get(stage,"u")   
-            self.y_hat_all[stage,:] = np.hstack((self.x_hat_all[stage,:],self.u_hat_all[stage,:])).reshape((1,nx+nu))   
+            self.y_hat_all[stage,:] = np.hstack((self.x_hat_all[stage,:],self.u_hat_all[stage,:])).reshape((1,self.nx+self.nu))   
 
         self.solve_stats["timings"]["query_nodes"][i] += perf_counter() - time_query_nodes
         
@@ -171,19 +181,19 @@ class ResidualLearningMPC():
             # ------------------- Set sensitivities --------------------
             time_set_sensitivities_reshape = perf_counter()
 
-            A_reshape = np.reshape(A_total,(nx**2),order="F")
-            B_reshape = np.reshape(B_total,(nx*nu),order="F")
+            A_reshape = np.reshape(A_total,(self.nx**2),order="F")
+            B_reshape = np.reshape(B_total,(self.nx*self.nu),order="F")
             
             self.solve_stats["timings"]["set_sensitivities_reshape"][i] += perf_counter() - time_set_sensitivities_reshape
             time_set_sensitivities = perf_counter()
 
-            self.p_hat_all[stage,:] = np.hstack((
+            self.p_hat_linmdl[stage,:] = np.hstack((
                 A_reshape,
                 B_reshape,
                 f_hat,
                 self.p_hat_nonlin[stage,:]
             ))
-            self.ocp_solver.set(stage, "p", self.p_hat_all[stage,:])
+            self.ocp_solver.set(stage, "p", self.p_hat_linmdl[stage,:])
 
             self.solve_stats["timings"]["set_sensitivities"][i] += perf_counter() - time_set_sensitivities
 
@@ -194,7 +204,7 @@ class ResidualLearningMPC():
         status = self.ocp_solver.solve()
         self.solve_stats["timings"]["phase_one"][i] += perf_counter() - time_phase_one
 
-    def feedback():
+    def feedback(self, i):
         # ------------------- Solve QP --------------------
         time_solve_qp = perf_counter()
 
@@ -203,6 +213,8 @@ class ResidualLearningMPC():
             
         self.solve_stats["timings"]["solve_qp"][i] += perf_counter() - time_solve_qp
         self.solve_stats["timings"]["solve_qp_acados"][i] += self.ocp_solver.get_stats("time_tot")
+
+        return status
 
     def get_solution(self):
         X = np.zeros((self.N+1, self.nx))

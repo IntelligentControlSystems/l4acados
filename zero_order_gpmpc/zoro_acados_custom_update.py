@@ -416,7 +416,7 @@ class ZoroAcadosCustomUpdate():
         zoro_description.backoff_scaling_gamma = norm.ppf(self.prob_x)
         zoro_description.P0_mat = self.Sigma_x0
         zoro_description.fdbk_K_mat = np.zeros((self.nu, self.nx))
-        unc_jac_G_mat = self.B
+        zoro_description.unc_jac_G_mat = self.B
         """G in (nx, nw) describes how noise affects dynamics. I.e. x+ = ... + G@w"""
         zoro_description.W_mat = self.Sigma_W
         """W in (nw, nw) describes the covariance of the noise on the system"""
