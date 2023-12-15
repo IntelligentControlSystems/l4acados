@@ -36,7 +36,7 @@ class ResidualLearningMPC():
         """
         # optional argument
         if B is None:
-            B = np.eye(self.nx)
+            B = np.eye(ocp.dims.nx)
         
         # transform OCP to linear-params-model
         self.B = B
@@ -55,8 +55,8 @@ class ResidualLearningMPC():
         self.x_hat_all = np.zeros((self.N+1, self.nx))
         self.u_hat_all = np.zeros((self.N, self.nu))
         self.y_hat_all = np.zeros((self.N, self.nx+self.nu))
-        self.residual_fun = np.zeros((N, self.nw))
-        self.residual_jac = np.zeros((self.nw, N, self.nx+self.nu))
+        self.residual_fun = np.zeros((self.N, self.nw))
+        self.residual_jac = np.zeros((self.nw, self.N, self.nx+self.nu))
         self.p_hat_nonlin = np.array([ocp.parameter_values for _ in range(self.N)])
         self.p_hat_linmdl = np.array([self.ocp.parameter_values for _ in range(self.N)])
 
@@ -130,8 +130,9 @@ class ResidualLearningMPC():
         time_get_gp_sensitivities = perf_counter()
 
         if self.has_residual_model:
-            self.residual_fun = self.residual_model.evaluate(self.y_hat_all)
-            self.residual_jac = self.residual_model.jacobian(self.y_hat_all)
+            # self.residual_fun = self.residual_model.evaluate(self.y_hat_all)
+            # self.residual_jac = self.residual_model.jacobian(self.y_hat_all)
+            self.residual_fun, self.residual_jac = self.residual_model.value_and_jacobian(self.y_hat_all)
 
         self.solve_stats["timings"]["get_gp_sensitivities"][i] += perf_counter() - time_get_gp_sensitivities
         
