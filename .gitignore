@@ -1,3 +1,12 @@
+# Examples
+examples/inverted_pendulum/*.json
+
+# CasADi / acados
+c_generated_code/
+jit_tmp*.c
+tmp_casadi_compiler_shell*.o
+
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
