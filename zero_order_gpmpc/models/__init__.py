@@ -1,1 +1,1 @@
-from .residual_model import ResidualModel
+from .base import ResidualModel
