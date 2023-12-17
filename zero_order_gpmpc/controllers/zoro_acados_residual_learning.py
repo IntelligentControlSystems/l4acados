@@ -7,8 +7,8 @@ import gpytorch
 
 from acados_template import AcadosOcp, AcadosSim, AcadosSimSolver, AcadosOcpSolver, ZoroDescription
 from .zoro_acados_utils import *
-from .residual_model import ResidualModel
 from .residual_learning_mpc import ResidualLearningMPC
+from zero_order_gpmpc.models import ResidualModel
 
 from time import perf_counter
 from dataclasses import dataclass
