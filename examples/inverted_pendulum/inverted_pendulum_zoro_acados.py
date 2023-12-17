@@ -26,7 +26,7 @@ import torch
 import gpytorch
 
 # zoRO imports
-from zero_order_gpmpc import ZoroAcados
+from zero_order_gpmpc.controllers import ZoroAcados
 from inverted_pendulum_model_acados import export_simplependulum_ode_model, export_ocp_nominal
 from utils import base_plot, add_plot_trajectory, EllipsoidTubeData2D
 
@@ -109,7 +109,7 @@ plot_data_nom = EllipsoidTubeData2D(
     center_data = X_init,
     ellipsoid_data = None
 )
-add_plot_trajectory(ax, plot_data_nom, prob_tighten=prob_tighten)
+add_plot_trajectory(ax, plot_data_nom, prob_tighten=None)
 # -
 
 # ## Robustify simulation
@@ -175,7 +175,7 @@ ocp_zoro_nogp.solver_options.nlp_solver_type = "SQP_RTI"
 
 # +
 # zoro_solver_nogp = ZoroAcados(ocp_zoro_nogp, sim, prob_x, Sigma_x0, Sigma_W+Sigma_GP_prior)
-from zero_order_gpmpc.zoro_acados_utils import generate_h_tightening_funs_SX, only_upper_bounds_expr, tighten_model_constraints
+from zero_order_gpmpc.controllers.zoro_acados_utils import generate_h_tightening_funs_SX, only_upper_bounds_expr, tighten_model_constraints
 
 # make constraints one-sided
 ocp_model = export_simplependulum_ode_model(only_lower_bounds=True)
