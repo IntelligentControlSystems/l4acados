@@ -40,6 +40,41 @@ def generate_train_inputs_zoro(zoro_solver, x0_nom, N_sim_per_x0, N_x0,
     
     return X_inp, x0_arr
 
+def generate_train_inputs_acados(ocp_solver, x0_nom, N_sim_per_x0, N_x0, 
+    random_seed=None, 
+    x0_rand_scale=0.1
+):
+    if random_seed is not None:
+        np.random.seed(random_seed)
+
+    nx = ocp_solver.acados_ocp.dims.nx
+    nu = ocp_solver.acados_ocp.dims.nu
+    N = ocp_solver.acados_ocp.dims.N
+
+    x0_arr = np.zeros((N_x0, nx))
+    X_inp = np.zeros((N_x0*N_sim_per_x0*N, nx+nu))
+
+    i_fac = N_sim_per_x0 * N
+    j_fac = N
+    for i in range(N_x0):
+        x0_arr[i,:] = x0_nom + x0_rand_scale * (2 * np.random.rand(nx) - 1)
+
+        ocp_solver.set(0, "lbx", x0_arr[i,:])
+        ocp_solver.set(0, "ubx", x0_arr[i,:])
+        ocp_solver.solve()
+        
+        # store training points
+        for j in range(N_sim_per_x0):
+            for k in range(N):
+                ijk = i*i_fac+j*j_fac+k
+                X_inp[ijk,:] = np.hstack((
+                    ocp_solver.get(k, "x"),
+                    ocp_solver.get(k, "u")
+                ))
+    
+    return X_inp, x0_arr
+
+
 def generate_train_data_acados(acados_ocp_solver, 
     integrator_nom,
     integrator_sim,

@@ -13,10 +13,14 @@
 #     name: python3
 # ---
 
-# +
 import sys, os
 sys.path += ["../../"]
 
+# %load_ext autoreload
+# %autoreload 1
+# %aimport zero_order_gpmpc
+
+# +
 import numpy as np
 from scipy.stats import norm
 import casadi as cas
@@ -26,7 +30,8 @@ import torch
 import gpytorch
 
 # zoRO imports
-from zero_order_gpmpc import ZoroAcados
+import zero_order_gpmpc
+from zero_order_gpmpc import ZoroAcados, ZoroAcadosCustomUpdate
 from inverted_pendulum_model_acados import export_simplependulum_ode_model, export_ocp_nominal
 from utils import base_plot, add_plot_trajectory, EllipsoidTubeData2D
 
@@ -52,6 +57,9 @@ from gpytorch_utils.gp_model import MultitaskGPModel, BatchIndependentMultitaskG
 # $$
 #
 # The model setup and controller definition can be found in the functions `export_simplependulum_ode_model()`, `export_ocp_nominal()` in the `inverted_pendulum_model_acados.py` file.
+
+# build C code again?
+build_c_code = True
 
 # +
 # discretization
@@ -109,7 +117,7 @@ plot_data_nom = EllipsoidTubeData2D(
     center_data = X_init,
     ellipsoid_data = None
 )
-add_plot_trajectory(ax, plot_data_nom, prob_tighten=prob_tighten)
+add_plot_trajectory(ax, plot_data_nom, prob_tighten=None)
 # -
 
 # ## Robustify simulation
@@ -225,7 +233,8 @@ acados_integrator = AcadosSimSolver(sim, json_file = 'acados_sim_' + sim.model.n
 # solve with zoRO (no GP model, only process noise)
 zoro_solver_nogp = ZoroAcados(
     ocp_zoro_nogp, sim, prob_x, Sigma_x0, Sigma_W, 
-    h_tightening_jac_sig_fun=h_tighten_jac_sig_fun
+    h_tightening_jac_sig_fun=h_tighten_jac_sig_fun,
+    use_cython=False
 )
 
 for i in range(N):
@@ -323,7 +332,7 @@ likelihood = gpytorch.likelihoods.MultitaskGaussianLikelihood(
 gp_model = BatchIndependentMultitaskGPModel(x_train_tensor, y_train_tensor, likelihood, nout)
 
 # +
-training_iterations = 500
+training_iterations = 200
 rng_seed = 456
 
 gp_model, likelihood = train_gp_model(gp_model, torch_seed=rng_seed, training_iterations=training_iterations)
@@ -408,7 +417,8 @@ ocp_zoro = deepcopy(ocp_zoro_nogp)
 zoro_solver = ZoroAcados(
     ocp_zoro, sim, prob_x, Sigma_x0, Sigma_W, 
     h_tightening_jac_sig_fun=h_tighten_jac_sig_fun, 
-    gp_model=gp_model
+    gp_model=gp_model,
+    use_cython=False
 )
 
 for i in range(N):
@@ -418,6 +428,74 @@ zoro_solver.ocp_solver.set(N, "x",X_init[N,:])
 
 zoro_solver.solve()
 X,U,P = zoro_solver.get_solution()
+# -
+
+# ### Custom Update version
+
+# +
+# # we use both-sided bounds again, specify which bound to be tightened using according index
+# ocp_cupdate = export_ocp_nominal(N,T,only_lower_bounds=False)
+# we use one-sided bounds since we just want to tighten upper bound
+ocp_cupdate = export_ocp_nominal(N,T,only_lower_bounds=True,model_name='simplependulum_ode_cupdate')
+
+# tighten constraints
+idh_tight = np.array([0]) # lower on theta (theta >= 0)
+
+# integrator for nominal model
+sim_cupdate = AcadosSim()
+
+sim_cupdate.model = ocp_cupdate.model
+sim_cupdate.parameter_values = ocp_cupdate.parameter_values
+sim_cupdate.solver_options.integrator_type = "ERK"
+
+# set prediction horizon
+sim_cupdate.solver_options.T = dT
+
+# acados_ocp_solver = AcadosOcpSolver(ocp_init, json_file = 'acados_ocp_' + model.name + '.json')
+acados_integrator_cupdate = AcadosSimSolver(sim_cupdate, json_file = 'acados_sim_' + sim_cupdate.model.name + '_cupdate.json')
+
+# +
+# # %aimport zero_order_gpmpc
+# import importlib
+# importlib.reload(zero_order_gpmpc)
+# from zero_order_gpmpc import ZoroAcadosCustomUpdate
+
+zoro_solver_cupdate = zero_order_gpmpc.ZoroAcadosCustomUpdate(
+    ocp_cupdate, sim_cupdate, prob_x, Sigma_x0, Sigma_W, 
+    h_tightening_idx=idh_tight, 
+    gp_model=gp_model,
+    use_cython=True, #TODO: fix cython issue
+    path_json_ocp="zoro_ocp_solver_config_cupdate.json",
+    path_json_sim="zoro_sim_solver_config_cupdate.json",
+)   
+
+for i in range(N):
+    zoro_solver_cupdate.ocp_solver.set(i, "x",X_init[i,:])
+    zoro_solver_cupdate.ocp_solver.set(i, "u",U_init[i,:])
+zoro_solver_cupdate.ocp_solver.set(N, "x",X_init[N,:])
+
+zoro_solver_cupdate.solve()
+X_cup,U_cup,P_cup = zoro_solver_cupdate.get_solution()
+# -
+
+# ### Custom update (with GP) vs. GP -> the same!
+
+# +
+fig, ax = base_plot(lb_theta=lb_theta)
+
+plot_data_gp = EllipsoidTubeData2D(
+    center_data = X,
+    ellipsoid_data = np.array(P)
+    # ellipsoid_data = None
+)
+
+plot_data_gp_cupdate = EllipsoidTubeData2D(
+    center_data = X_cup,
+    ellipsoid_data = np.array(P_cup)
+    # ellipsoid_data = None
+)
+add_plot_trajectory(ax, plot_data_gp_cupdate, color_fun=plt.cm.Greens)
+add_plot_trajectory(ax, plot_data_gp, color_fun=plt.cm.Reds)
 # -
 
 # ## Trained GP vs. no GP
@@ -463,7 +541,8 @@ Sigma_W+Sigma_GP_prior
 # zoro_solver_gpprior = ZoroAcados(ocp_zoro_gpprior, sim, prob_x, Sigma_x0, Sigma_W+Sigma_GP_prior)
 zoro_solver_gpprior = ZoroAcados(
     ocp_zoro_gpprior, sim, prob_x, Sigma_x0, Sigma_W+Sigma_GP_prior, 
-    h_tightening_jac_sig_fun=h_tighten_jac_sig_fun
+    h_tightening_jac_sig_fun=h_tighten_jac_sig_fun,
+    use_cython=False
 )
 
 for i in range(N):

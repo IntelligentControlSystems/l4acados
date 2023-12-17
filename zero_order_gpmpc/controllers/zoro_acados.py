@@ -27,8 +27,9 @@ class ZoroAcados():
         use_cython=True, 
         h_tightening_jac_sig_fun=None,
         h_tightening_idx=[],
-        path_json_ocp="zoro_sim_solver_config.json",
-        path_json_sim="zoro_sim_solver_config.json"
+        path_json_ocp="zoro_ocp_solver_config.json",
+        path_json_sim="zoro_sim_solver_config.json",
+        build_c_code=True
     ):
         """
         ocp: AcadosOcp for nominal problem
@@ -272,7 +273,8 @@ class ZoroAcados():
                 time_set_tightening = perf_counter()
 
                 # set constraints
-                self.ocp_solver.constraints_set(stage,"lh",lh.full().flatten())
+                if stage > 0:
+                    self.ocp_solver.constraints_set(stage,"lh",lh.full().flatten())
 
                 self.solve_stats["timings"]["set_tightening"][i] += perf_counter() - time_set_tightening
                 # self.solve_stats["timings"]["set_tightening_raw"][i] += t_set_C + t_set_lg + t_set_ug

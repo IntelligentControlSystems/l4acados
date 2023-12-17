@@ -5,9 +5,7 @@ from casadi import SX, MX, vertcat, sin, cos, Function
 from scipy.linalg import block_diag
 
 # %%
-def export_simplependulum_ode_model(noise=False,only_lower_bounds=False):
-    model_name = 'simplependulum_ode'
-
+def export_simplependulum_ode_model(noise=False,only_lower_bounds=False,model_name='simplependulum_ode'):
     # set up states & controls
     theta   = SX.sym('theta')
     dtheta  = SX.sym('dtheta')
@@ -64,7 +62,7 @@ def export_simplependulum_ode_model(noise=False,only_lower_bounds=False):
 
     return model
 
-def export_ocp_nominal(N, T, ocp_opts=None, only_lower_bounds=False):
+def export_ocp_nominal(N, T, ocp_opts=None, only_lower_bounds=False, **model_kwargs):
     # constraints
     x0 = np.array([np.pi, 0])
     lb_u = -2.0
@@ -79,7 +77,7 @@ def export_ocp_nominal(N, T, ocp_opts=None, only_lower_bounds=False):
     Q = np.diagflat(np.array([cost_theta, cost_omega]))
     R = np.array(1)
 
-    model = export_simplependulum_ode_model(noise=False, only_lower_bounds=only_lower_bounds)
+    model = export_simplependulum_ode_model(only_lower_bounds=only_lower_bounds, **model_kwargs)
 
     # generate acados OCP for INITITIALIZATION
     ocp = AcadosOcp()
