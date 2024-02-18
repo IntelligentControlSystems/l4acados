@@ -204,23 +204,6 @@ class ZoroAcadosCustomUpdate():
 
                 self.solve_stats["timings"]["build_lin_model"][i] += perf_counter() - time_build_lin_model
                 
-                # ------------------- Propagate --------------------
-                time_propagate_covar = perf_counter()
-
-                # delta-Values
-                if self.P_bar_old_vec is None:
-                    # i == 0
-                    dP_bar_vec = cas.DM.zeros((int((nx+1)*nx/2),1))
-                else:
-                    dP_bar_vec = self.P_bar_all_vec[stage] - self.P_bar_old_vec
-
-                self.P_bar_all[stage+1] = P_propagation(self.P_bar_all[stage], A_total, self.B, self.Sigma_W + np.diag(self.var[stage,:]))
-                
-                self.P_bar_old_vec = self.P_bar_all_vec[stage+1] # used in next iter
-                self.P_bar_all_vec[stage+1] = sym_mat2vec(self.P_bar_all[stage+1])
-
-                self.solve_stats["timings"]["propagate_covar"][i] += perf_counter() - time_propagate_covar
-
                 # ------------------- Set sensitivities --------------------
                 time_set_sensitivities_reshape = perf_counter()
 
@@ -237,41 +220,6 @@ class ZoroAcadosCustomUpdate():
                 ))
                 self.ocp_solver.set(stage, "p", self.p_hat_all[stage,:])
                 self.solve_stats["timings"]["set_sensitivities"][i] += perf_counter() - time_set_sensitivities
-
-                # ------------------- Compute back off --------------------
-                # time_get_backoffs = perf_counter()
-
-                # time_get_backoffs_htj_sig = perf_counter()
-                # p_sig = np.hstack((
-                #     self.P_bar_all_vec[stage], 
-                #     self.p_hat_model[i,:]
-                # ))
-                # htj_sig = self.h_tightening_jac_sig_fun(self.x_hat_all[stage,:], self.u_hat_all[stage,:], p_sig)          
-                # self.solve_stats["timings"]["get_backoffs_htj_sig"][i] += perf_counter() - time_get_backoffs_htj_sig
-                
-                # time_get_backoffs_htj_sig_matmul = perf_counter()
-                # htj_sig_matmul = htj_sig @ dP_bar_vec         
-                # self.solve_stats["timings"]["get_backoffs_htj_sig_matmul"][i] += perf_counter() - time_get_backoffs_htj_sig_matmul
-
-                # time_get_backoffs_add = perf_counter()
-                # tightening = htj_sig_matmul
-
-                # lh = cas.DM(self.ocp.constraints.lh) + tightening 
-
-                # time_now = perf_counter()
-                # self.solve_stats["timings"]["get_backoffs_add"][i] = time_now - time_get_backoffs_add
-                # self.solve_stats["timings"]["get_backoffs"][i] += time_now - time_get_backoffs
-                
-                # ------------------- Set tightening --------------------
-                # time_set_tightening = perf_counter()
-
-                # set constraints
-                # if stage > 0:
-                #     self.ocp_solver.constraints_set(stage,"lh",lh.full().flatten())
-
-
-                # self.solve_stats["timings"]["set_tightening"][i] += perf_counter() - time_set_tightening
-                # self.solve_stats["timings"]["set_tightening_raw"][i] += t_set_C + t_set_lg + t_set_ug
 
             # feedback rti_phase
             # self.ocp_solver.options_set('rti_phase', 1)
