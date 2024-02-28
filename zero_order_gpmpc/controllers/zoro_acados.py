@@ -110,6 +110,12 @@ class ZoroAcados():
             self.gp_model = gp_model
             self.gp_sensitivities = generate_gp_funs(gp_model)
 
+        # check CUDA availability
+        try: 
+            self.cuda_is_available = torch.cuda.is_available()
+        except AssertionError:
+            self.cuda_is_available = False
+
         # timings
         self.solve_stats_default = {
             "n_iter": 0,
@@ -170,9 +176,11 @@ class ZoroAcados():
             time_get_gp_sensitivities = perf_counter()
 
             if self.has_gp_model:
-                torch.cuda.synchronize()
+                if self.cuda_is_available:
+                    torch.cuda.synchronize()
                 self.mean, self.mean_dy, self.var = self.gp_sensitivities(self.y_hat_all)
-                torch.cuda.synchronize()
+                if self.cuda_is_available:
+                    torch.cuda.synchronize()
 
             self.solve_stats["timings"]["get_gp_sensitivities"][i] += perf_counter() - time_get_gp_sensitivities
             

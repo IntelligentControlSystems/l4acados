@@ -5,7 +5,13 @@ import casadi as cas
 import torch
 import gpytorch
 
-from acados_template import AcadosOcp, AcadosSim, AcadosSimSolver, AcadosOcpSolver, ZoroDescription
+from acados_template import (
+    AcadosOcp,
+    AcadosSim,
+    AcadosSimSolver,
+    AcadosOcpSolver,
+    ZoroDescription,
+)
 from .zoro_acados_utils import *
 from .residual_learning_mpc import ResidualLearningMPC
 from zero_order_gpmpc.models import ResidualModel
@@ -13,34 +19,42 @@ from zero_order_gpmpc.models import ResidualModel
 from time import perf_counter
 from dataclasses import dataclass
 
+
 @dataclass
 class SolveData:
     n_iter: int
     sol_x: np.ndarray
-    sol_u: np.ndarray 
+    sol_u: np.ndarray
     timings_total: float
     timings: dict
 
+
 class ZeroOrderGPMPC(ResidualLearningMPC):
-    def __init__(self, 
-        ocp, sim, prob_x, Sigma_x0, Sigma_W, 
-        B=None, 
-        gp_model=None, 
-        use_cython=True, 
+    def __init__(
+        self,
+        ocp,
+        sim,
+        prob_x,
+        Sigma_x0,
+        Sigma_W,
+        B=None,
+        gp_model=None,
+        use_cython=True,
         h_tightening_jac_sig_fun=None,
         h_tightening_idx=[],
         path_json_ocp="zoro_ocp_solver_config.json",
         path_json_sim="zoro_sim_solver_config.json",
-        build_c_code=True
+        build_c_code=True,
     ):
         super().__init__(
-            ocp, sim, 
-            B=B, 
-            residual_model=gp_model, 
-            use_cython=use_cython, 
+            ocp,
+            sim,
+            B=B,
+            residual_model=gp_model,
+            use_cython=use_cython,
             path_json_ocp=path_json_ocp,
             path_json_sim=path_json_sim,
-            build_c_code=False
+            build_c_code=False,
         )
 
         self.prob_x = prob_x
@@ -56,7 +70,7 @@ class ZeroOrderGPMPC(ResidualLearningMPC):
             self.build(
                 use_cython=use_cython,
                 path_json_ocp=path_json_ocp,
-                path_json_sim=path_json_sim
+                path_json_sim=path_json_sim,
             )
 
     def solve(self, tol_nlp=1e-6, n_iter_max=30):
@@ -72,25 +86,33 @@ class ZeroOrderGPMPC(ResidualLearningMPC):
             # ------------------- Check termination --------------------
             # check on residuals and terminate loop.
             time_check_termination = perf_counter()
-            
+
             # self.ocp_solver.print_statistics() # encapsulates: stat = self.ocp_solver.get_stats("statistics")
             residuals = self.ocp_solver.get_residuals()
             print("residuals after ", i, "SQP_RTI iterations:\n", residuals)
 
-            self.solve_stats["timings"]["check_termination"][i] += perf_counter() - time_check_termination
+            self.solve_stats["timings"]["check_termination"][i] += (
+                perf_counter() - time_check_termination
+            )
             self.solve_stats["timings"]["total"][i] += perf_counter() - time_iter
 
             if status_feed != 0:
-                raise Exception('acados self.ocp_solver returned status {} in time step {}. Exiting.'.format(status_feed, i))
+                raise Exception(
+                    "acados self.ocp_solver returned status {} in time step {}. Exiting.".format(
+                        status_feed, i
+                    )
+                )
 
             if max(residuals) < tol_nlp:
                 break
-        
+
         self.solve_stats["n_iter"] = i + 1
         self.solve_stats["timings_total"] = perf_counter() - time_total
 
     def setup_custom_update(self):
-        custom_update_source_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "custom_update_functions")
+        custom_update_source_dir = os.path.join(
+            os.path.dirname(os.path.realpath(__file__)), "custom_update_functions"
+        )
         template_c_file = "custom_update_function_gpzoro_template.in.c"
         template_h_file = "custom_update_function_gpzoro_template.in.h"
         custom_c_file = "custom_update_function_gpzoro.c"
@@ -98,7 +120,13 @@ class ZeroOrderGPMPC(ResidualLearningMPC):
 
         # copy custom update functions into acados
         path_acados_source = os.environ.get("ACADOS_SOURCE_DIR")
-        path_acados_custom_update = os.path.join(path_acados_source, "interfaces", "acados_template", "acados_template", "custom_update_templates")
+        path_acados_custom_update = os.path.join(
+            path_acados_source,
+            "interfaces",
+            "acados_template",
+            "acados_template",
+            "custom_update_templates",
+        )
         shutil.copy(
             os.path.join(custom_update_source_dir, template_h_file),
             path_acados_custom_update,
@@ -153,7 +181,7 @@ class ZeroOrderGPMPC(ResidualLearningMPC):
         Note that the function currently only supports setting the diagonal elements of the covariance matrices
         in the solver.
         """
-        
+
         covariances_in = np.concatenate(
             (
                 self.Sigma_x0_diag,
@@ -171,4 +199,3 @@ class ZeroOrderGPMPC(ResidualLearningMPC):
         self.covariances_array = out_arr[covariances_in_len:]
 
         return 0
-
