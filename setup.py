@@ -2,7 +2,6 @@
 from setuptools import setup, find_packages
 from os.path import dirname, abspath, basename
 from distutils.core import setup
-from catkin_pkg.python_setup import generate_distutils_setup
 
 setup(
     name='zero_order_gpmpc',
