@@ -38,7 +38,7 @@ from utils import base_plot, add_plot_trajectory, EllipsoidTubeData2D
 # gpytorch_utils
 from gpytorch_utils.gp_hyperparam_training import generate_train_inputs_zoro, generate_train_outputs_at_inputs, train_gp_model
 from gpytorch_utils.gp_utils import gp_data_from_model_and_path, gp_derivative_data_from_model_and_path, plot_gp_data, generate_grid_points
-from gpytorch_utils.gp_model import MultitaskGPModel, BatchIndependentMultitaskGPModel
+from gpytorch_utils.gp_model import BatchIndependentMultitaskGPModel
 
 # -
 
@@ -329,7 +329,7 @@ nout = y_train.shape[1]
 likelihood = gpytorch.likelihoods.MultitaskGaussianLikelihood(
     num_tasks = nout
 )
-gp_model = BatchIndependentMultitaskGPModel(x_train_tensor, y_train_tensor, likelihood, nout)
+gp_model = BatchIndependentMultitaskGPModel(x_train_tensor, y_train_tensor, likelihood)
 
 # +
 training_iterations = 200

@@ -1,13 +1,66 @@
+from typing import Optional
+
 import gpytorch
 import torch
 
+
 class BatchIndependentMultitaskGPModel(gpytorch.models.ExactGP):
-    def __init__(self, train_x, train_y, likelihood, nout):
+
+    def __init__(
+        self,
+        train_x: Optional[torch.tensor],
+        train_y: Optional[torch.tensor],
+        likelihood: gpytorch.likelihoods.Likelihood,
+        use_ard: bool = False,
+        residual_dimension: Optional[int] = None,
+        input_dimension: Optional[int] = None,
+        outputscale_prior: Optional[gpytorch.priors.Prior] = None,
+        lengthscale_prior: Optional[gpytorch.priors.Prior] = None,
+    ):
         super().__init__(train_x, train_y, likelihood)
-        self.mean_module = gpytorch.means.ZeroMean(batch_shape=torch.Size([nout]))
+
+        if train_y is None and residual_dimension is None:
+            raise RuntimeError(
+                "train_y and residual_dimension are both None. Please specify one."
+            )
+
+        if (
+            train_y is not None
+            and residual_dimension is not None
+            and train_y.size(-1) != residual_dimension
+        ):
+            raise RuntimeError(
+                f"train_y shape {train_y.shape()} and residual_dimension {residual_dimension}"
+                " do not correspond."
+            )
+
+        if train_x is None and input_dimension is None:
+            raise RuntimeError(
+                "train_x and input_dimension are both None. Please specify one."
+            )
+
+        if use_ard:
+            ard_input_shape = (
+                train_x.size(-1) if train_x is not None else input_dimension
+            )
+        else:
+            ard_input_shape = None
+
+        residual_dimension = (
+            train_y.size(-1) if train_y is not None else residual_dimension
+        )
+
+        self.mean_module = gpytorch.means.ZeroMean(
+            batch_shape=torch.Size([residual_dimension])
+        )
         self.covar_module = gpytorch.kernels.ScaleKernel(
-            gpytorch.kernels.RBFKernel(batch_shape=torch.Size([nout])),
-            batch_shape=torch.Size([nout])
+            gpytorch.kernels.RBFKernel(
+                ard_num_dims=ard_input_shape,
+                batch_shape=torch.Size([residual_dimension]),
+                lengthscale_prior=lengthscale_prior,
+            ),
+            batch_shape=torch.Size([residual_dimension]),
+            outputscale_prior=outputscale_prior,
         )
 
     def forward(self, x):
@@ -16,49 +69,3 @@ class BatchIndependentMultitaskGPModel(gpytorch.models.ExactGP):
         return gpytorch.distributions.MultitaskMultivariateNormal.from_batch_mvn(
             gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
         )
-
-
-class MultitaskGPModel(gpytorch.models.ExactGP):
-    def __init__(self, train_x, train_y, likelihood, nout, rank=None):
-        '''
-        Parameters
-        ----------
-        nout : int
-            number of outputs
-        '''
-        super(MultitaskGPModel, self).__init__(train_x, train_y, likelihood)
-
-        if rank is None:
-            rank = nout
-
-        self.mean_module = gpytorch.means.MultitaskMean(
-            # gpytorch.means.ConstantMean(), num_tasks=nout
-            gpytorch.means.ZeroMean(), num_tasks=nout
-        )
-        self.covar_module = gpytorch.kernels.MultitaskKernel(
-            gpytorch.kernels.RBFKernel(ard_num_dims=train_x.shape[1]), num_tasks=nout, rank=rank
-        )
-
-    def forward(self, x):
-        mean_x = self.mean_module(x)
-        covar_x = self.covar_module(x)
-        return gpytorch.distributions.MultitaskMultivariateNormal(mean_x, covar_x)
-
-class IndependentGPModel(gpytorch.models.ExactGP):
-    def __init__(self, train_x, train_y, likelihood):
-        '''
-        Parameters
-        ----------
-        nout : int
-            number of outputs
-        '''
-        super(IndependentGPModel, self).__init__(train_x, train_y, likelihood)
-        self.mean_module = gpytorch.means.ZeroMean()
-        self.covar_module = gpytorch.kernels.ScaleKernel(gpytorch.kernels.MaternKernel(nu = 1.5, ard_num_dims=train_x.shape[1]))
-        # self.covar_module = gpytorch.kernels.MaternKernel(nu = 1.5, ard_num_dims=train_x.shape[1])
-        # self.covar_module = gpytorch.kernels.RBFKernel(ard_num_dims=train_x.shape[1])
-
-    def forward(self, x):
-        mean_x = self.mean_module(x)
-        covar_x = self.covar_module(x)
-        return gpytorch.distributions.MultivariateNormal(mean_x, covar_x)

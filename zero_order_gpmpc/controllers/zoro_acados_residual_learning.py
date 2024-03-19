@@ -1,4 +1,5 @@
 import os, sys, shutil
+from subprocess import check_output
 import numpy as np
 import casadi as cas
 
@@ -119,11 +120,14 @@ class ZeroOrderGPMPC(ResidualLearningMPC):
         custom_h_file = "custom_update_function_gpzoro.h"
 
         # copy custom update functions into acados
-        path_acados_source = os.environ.get("ACADOS_SOURCE_DIR")
+        # Copy custom update functions into acados
+        # First find location where acados-template is installed.
+        pip_output = check_output(["pip", "show", "acados-template"]).decode().split()
+        path_to_acados_template = pip_output[pip_output.index("Location:") + 1]
+
+        # Then concat the full path to the template folder.
         path_acados_custom_update = os.path.join(
-            path_acados_source,
-            "interfaces",
-            "acados_template",
+            path_to_acados_template,
             "acados_template",
             "custom_update_templates",
         )
