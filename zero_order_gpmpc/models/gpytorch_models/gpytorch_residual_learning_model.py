@@ -41,6 +41,16 @@ class DataProcessingStrategy(ABC):
         raise NotImplementedError
 
 
+class VoidDataStrategy(DataProcessingStrategy):
+    def process(
+        self,
+        residual_gp_instance: ResidualGaussianProcess,
+        x_input: np.array,
+        y_target: np.array,
+    ):
+        pass
+
+
 class RecordDataStrategy(DataProcessingStrategy):
     """Implements a processing strategy which saves the data continuously to a file.
 
@@ -102,6 +112,9 @@ class OnlineLearningStrategy(DataProcessingStrategy):
     The received data is incorporated in the GP and used for further predictions.
     """
 
+    def __init__(self, max_num_points=200) -> None:
+        self.max_num_points = max_num_points
+
     def process(
         self,
         residual_gp_instance: ResidualGaussianProcess,
@@ -133,6 +146,23 @@ class OnlineLearningStrategy(DataProcessingStrategy):
                 residual_gp_instance._gp_feature_selector(x_input),
                 y_target,
                 strict=False,
+            )
+            return
+
+        if (
+            residual_gp_instance.gp_model.train_inputs[0].shape[-2]
+            >= self.max_num_points
+        ):
+            selector = torch.ones(self.max_num_points)
+            # TODO(@naefjo): Add super cool logic to determine which points to kick out. Ideally with O(-n^3)
+            drop_idx = torch.randint(0, self.max_num_points, torch.Size()).item()
+            selector[drop_idx] = 0
+            residual_gp_instance.gp_model = (
+                residual_gp_instance.gp_model.get_fantasy_model(
+                    residual_gp_instance._gp_feature_selector(x_input),
+                    y_target,
+                    data_selector=selector,
+                )
             )
             return
 

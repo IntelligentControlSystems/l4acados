@@ -83,11 +83,11 @@ class ZoroAcadosCustomUpdate:
         self.x_hat_all = np.zeros((N + 1, nx))
         self.u_hat_all = np.zeros((N, nu))
         self.y_hat_all = np.zeros((N, nx + nu))
-        self.P_bar_all = [None] * (N + 1)
-        self.P_bar_all_vec = [None] * (N + 1)
-        self.P_bar_old_vec = None
-        self.P_bar_all[0] = Sigma_x0
-        self.P_bar_all_vec[0] = sym_mat2vec(Sigma_x0)
+        # self.P_bar_all = [None] * (N + 1)
+        # self.P_bar_all_vec = [None] * (N + 1)
+        # self.P_bar_old_vec = None
+        # self.P_bar_all[0] = Sigma_x0
+        # self.P_bar_all_vec[0] = sym_mat2vec(Sigma_x0)
         self.mean = np.zeros((N, self.nw))
         self.mean_dy = np.zeros((self.nw, N, nx + nu))
         self.var = np.zeros((N, self.nw))
@@ -331,7 +331,7 @@ class ZoroAcadosCustomUpdate:
 
         X[self.N, :] = self.ocp_solver.get(self.N, "x")
 
-        return X, U, self.P_bar_all
+        return X, U, self.covariances_array
 
     def print_solve_stats(self):
         n_iter = self.solve_stats["n_iter"]

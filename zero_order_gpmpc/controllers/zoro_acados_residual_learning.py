@@ -40,13 +40,14 @@ class ZeroOrderGPMPC(ResidualLearningMPC):
         Sigma_W,
         B=None,
         gp_model=None,
-        use_cython=True,
-        h_tightening_jac_sig_fun=None,
         h_tightening_idx=[],
+        use_cython=True,
         path_json_ocp="zoro_ocp_solver_config.json",
         path_json_sim="zoro_sim_solver_config.json",
         build_c_code=True,
     ):
+        # Set up all member variables but don't build the code yet. We still need to setup
+        # the custom update.
         super().__init__(
             ocp,
             sim,
@@ -57,6 +58,10 @@ class ZeroOrderGPMPC(ResidualLearningMPC):
             path_json_sim=path_json_sim,
             build_c_code=False,
         )
+
+        # TODO(@naefjo): figure out proper length
+        self.covariances_array = np.zeros(200)
+        """Propagated covariances along the horizon"""
 
         self.prob_x = prob_x
         self.Sigma_x0 = Sigma_x0
@@ -70,6 +75,7 @@ class ZeroOrderGPMPC(ResidualLearningMPC):
         if build_c_code:
             self.build(
                 use_cython=use_cython,
+                build_c_code=build_c_code,
                 path_json_ocp=path_json_ocp,
                 path_json_sim=path_json_sim,
             )
@@ -170,7 +176,7 @@ class ZeroOrderGPMPC(ResidualLearningMPC):
         zoro_description.W_mat = self.Sigma_W
         """W in (nw, nw) describes the covariance of the noise on the system"""
 
-        zoro_description.idx_lh_t = self.tighten_idx
+        zoro_description.idx_uh_t = self.tighten_idx
         self.ocp.zoro_description = zoro_description
 
     def do_custom_update(self) -> None:
@@ -185,6 +191,8 @@ class ZeroOrderGPMPC(ResidualLearningMPC):
         Note that the function currently only supports setting the diagonal elements of the covariance matrices
         in the solver.
         """
+        if not self.has_residual_model:
+            return
 
         covariances_in = np.concatenate(
             (
@@ -202,4 +210,4 @@ class ZeroOrderGPMPC(ResidualLearningMPC):
         ), "do_custom_update: elements in the input covariances changed"
         self.covariances_array = out_arr[covariances_in_len:]
 
-        return 0
+        return

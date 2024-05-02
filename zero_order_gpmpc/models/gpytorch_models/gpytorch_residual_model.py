@@ -1,8 +1,8 @@
 from typing import Optional, Union
 import torch
 import gpytorch
-from ..residual_model import ResidualModel
 
+from ..residual_model import ResidualModel
 
 import numpy as np
 import torch
@@ -100,28 +100,46 @@ class GPyTorchResidualModel(ResidualModel):
             and self.gp_model.train_inputs[0].device.type == "cuda"
         ):
             self.to_tensor = lambda X: torch.Tensor(X).cuda()
-            self.to_numpy = lambda T: T.cpu().numpy()
+            self.to_numpy = lambda T: T.cpu().detach().numpy()
         else:
             self.to_tensor = lambda X: torch.Tensor(X)
-            self.to_numpy = lambda T: T.numpy()
+            self.to_numpy = lambda T: T.detach().numpy()
 
-        def mean_fun_sum(y):
-            with gpytorch.settings.fast_pred_var():
-                return self.gp_model(self._gp_feature_selector(y)).mean.sum(dim=0)
+    def _mean_fun_sum(self, y):
+        """Helper function for jacobian computation
 
-        self._mean_fun_sum = mean_fun_sum
+        sums up the mean predictions along the first dimension
+        (i.e. along the horizon).
+        """
+        self.evaluate(y, require_grad=True)
+        return self.predictions.mean.sum(dim=0)
 
-    def evaluate(self, y):
-        with gpytorch.settings.fast_pred_var():
-            y_tensor = torch.autograd.Variable(self.to_tensor(y), requires_grad=False)
-            with torch.no_grad():
+    def evaluate(self, y, require_grad=False):
+        # NOTE(@naefjo): covar_root_decomposition=False forces linear_operator to use cholesky.
+        # This is needed as otherwise our approach falls apart.
+        with gpytorch.settings.fast_pred_var(), gpytorch.settings.fast_computations(
+            covar_root_decomposition=False
+        ):
+            y_tensor = self.to_tensor(y)
+            if require_grad:
                 self.predictions = self.gp_model(self._gp_feature_selector(y_tensor))
-        return self.to_numpy(self.predictions.mean)
+            else:
+                with torch.no_grad():
+                    self.predictions = self.gp_model(
+                        self._gp_feature_selector(y_tensor)
+                    )
+
+        self.current_mean = self.to_numpy(self.predictions.mean)
+
+        # NOTE(@naefjo): If we skipped posterior covariances, we keep the old covars in cache for hewing method.
+        if gpytorch.settings.skip_posterior_variances.off():
+            self.current_variance = self.to_numpy(self.predictions.variance)
+
+        return self.current_mean
 
     def jacobian(self, y):
-        with gpytorch.settings.fast_pred_var():
-            y_tensor = torch.autograd.Variable(self.to_tensor(y), requires_grad=True)
-            mean_dy = torch.autograd.functional.jacobian(self._mean_fun_sum, y_tensor)
+        y_tensor = self.to_tensor(y)
+        mean_dy = torch.autograd.functional.jacobian(self._mean_fun_sum, y_tensor)
         return self.to_numpy(mean_dy)
 
     def value_and_jacobian(self, y):
@@ -135,14 +153,6 @@ class GPyTorchResidualModel(ResidualModel):
             - mean_dy:  (residual_dim, N, state_dim) tensor
             - covariance:  (N, residual_dim) tensor
         """
-        with gpytorch.settings.fast_pred_var():
-            y_tensor = torch.autograd.Variable(self.to_tensor(y), requires_grad=True)
-            with torch.no_grad():
-                self.predictions = self.gp_model(self._gp_feature_selector(y_tensor))
-            mean_dy = torch.autograd.functional.jacobian(self._mean_fun_sum, y_tensor)
-
-        self.current_mean = self.to_numpy(self.predictions.mean)
-        self.current_variance = self.to_numpy(self.predictions.variance)
-        self.current_mean_dy = self.to_numpy(mean_dy)
+        self.current_mean_dy = self.jacobian(y)
 
         return self.current_mean, self.current_mean_dy

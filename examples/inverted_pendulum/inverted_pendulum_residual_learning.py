@@ -32,14 +32,16 @@ import copy
 
 # zoRO imports
 import zero_order_gpmpc
-from zero_order_gpmpc import ZoroAcados, ZoroAcadosCustomUpdate, ResidualLearningMPC
+from zero_order_gpmpc.controllers import ZoroAcados, ZoroAcadosCustomUpdate, ResidualLearningMPC
 from inverted_pendulum_model_acados import export_simplependulum_ode_model, export_ocp_nominal
 from utils import base_plot, add_plot_trajectory, EllipsoidTubeData2D
 
 # gpytorch_utils
 from gpytorch_utils.gp_hyperparam_training import generate_train_inputs_acados, generate_train_outputs_at_inputs, train_gp_model
 from gpytorch_utils.gp_utils import gp_data_from_model_and_path, gp_derivative_data_from_model_and_path, plot_gp_data, generate_grid_points
-from gpytorch_utils.gp_model import BatchIndependentMultitaskGPModel
+from zero_order_gpmpc.models.gpytorch_models.gpytorch_gp import (
+    BatchIndependentMultitaskGPModel,
+)
 
 # -
 
@@ -332,10 +334,10 @@ class ResidualGPyTorch(ResidualModel):
         self.gp_model = gpytorch_model
         if gp_model.train_inputs[0].device.type == "cuda":
             self.to_tensor = lambda X: torch.Tensor(X).cuda()
-            self.to_numpy = lambda T: T.cpu().numpy()
+            self.to_numpy = lambda T: T.cpu().detach().numpy()
         else:
             self.to_tensor = lambda X: torch.Tensor(X)
-            self.to_numpy = lambda T: T.numpy()
+            self.to_numpy = lambda T: T.detach().numpy()
         
         if torch.cuda.is_available():
             self.cuda_is_available = True

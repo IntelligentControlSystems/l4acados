@@ -14,7 +14,7 @@ from zero_order_gpmpc.models.gpytorch_models.gpytorch_residual_learning_model im
     OnlineLearningStrategy,
     RecordDataStrategy,
 )
-import gpytorch_utils.gp_model as gp_model
+from zero_order_gpmpc.models.gpytorch_models import gpytorch_gp
 
 
 def count_lines(filepath: str) -> int:
@@ -64,7 +64,7 @@ def test_unconditioned_gp(num_tests: int = 10) -> None:
 
         input_selection = FeatureSelector(input_feature_selection)
 
-        gpytorch_gp = gp_model.BatchIndependentMultitaskGPModel(
+        gpytorch_gp_model = gpytorch_gp.BatchIndependentMultitaskGPModel(
             train_x=None,
             train_y=None,
             likelihood=gpytorch.likelihoods.MultitaskGaussianLikelihood(
@@ -75,13 +75,13 @@ def test_unconditioned_gp(num_tests: int = 10) -> None:
             use_ard=enable_ard,
         )
 
-        gpytorch_gp.initialize(**hyperparameters)
+        gpytorch_gp_model.initialize(**hyperparameters)
 
-        gpytorch_gp.eval()
-        gpytorch_gp.likelihood.eval()
+        gpytorch_gp_model.eval()
+        gpytorch_gp_model.likelihood.eval()
 
         gp = GPyTorchResidualLearningModel(
-            gp_model=gpytorch_gp,
+            gp_model=gpytorch_gp_model,
             gp_feature_selector=input_selection,
             data_processing_strategy=RecordDataStrategy(x_data_path, y_data_path),
             verbose=True,
@@ -254,7 +254,7 @@ def test_load_gp_from_file(num_tests: int = 10) -> None:
 
         input_selection = FeatureSelector(input_feature_selection)
 
-        gpytorch_model = gp_model.BatchIndependentMultitaskGPModel(
+        gpytorch_model = gpytorch_gp.BatchIndependentMultitaskGPModel(
             input_selection(train_x_tensor),
             train_y_tensor,
             gpytorch.likelihoods.MultitaskGaussianLikelihood(
@@ -332,7 +332,7 @@ def test_incorporate_new_data(num_tests: int = 10):
 
         input_selection = FeatureSelector(input_feature_selection)
 
-        gpytorch_gp = gp_model.BatchIndependentMultitaskGPModel(
+        gpytorch_gp_model = gpytorch_gp.BatchIndependentMultitaskGPModel(
             train_x=None,
             train_y=None,
             likelihood=gpytorch.likelihoods.MultitaskGaussianLikelihood(
@@ -342,20 +342,20 @@ def test_incorporate_new_data(num_tests: int = 10):
             residual_dimension=residual_dimension,
         )
 
-        gpytorch_gp.initialize(**hyperparameters)
+        gpytorch_gp_model.initialize(**hyperparameters)
 
-        gpytorch_gp.eval()
-        gpytorch_gp.likelihood.eval()
+        gpytorch_gp_model.eval()
+        gpytorch_gp_model.likelihood.eval()
 
         gp = GPyTorchResidualLearningModel(
-            gp_model=gpytorch_gp,
+            gp_model=gpytorch_gp_model,
             gp_feature_selector=input_selection,
-            data_processing_strategy=OnlineLearningStrategy(),
+            data_processing_strategy=OnlineLearningStrategy(200),
         )
 
         gp.value_and_jacobian(torch.rand(1, state_dimension))
 
-        for _ in range(100):
+        for _ in range(400):
             x_rand_data = np.random.rand(state_dimension)
             y_rand_data = np.random.rand(residual_dimension)
 
@@ -376,10 +376,11 @@ def test_incorporate_new_data(num_tests: int = 10):
             )
             eval_times_ms.append((perf_counter() - time_before) * 1e3)
 
-    assert gp.gp_model.train_inputs[0].shape == torch.Size(
-        [100, sum(input_feature_selection)]
-    )
-    assert gp.gp_model.train_targets.shape == torch.Size([100, residual_dimension])
+        assert gp.gp_model.train_inputs[0].shape == torch.Size(
+            [200, sum(input_feature_selection)]
+        )
+        assert gp.gp_model.train_targets.shape == torch.Size([200, residual_dimension])
+
     print(
         f"data adding avg over {len(add_data_times_ms)} "
         f"trials: {np.average(add_data_times_ms):.4f} ms."
@@ -391,6 +392,7 @@ def test_incorporate_new_data(num_tests: int = 10):
 
 
 if __name__ == "__main__":
+    torch.random.manual_seed(42)
     test_unconditioned_gp()
     print(5 * "\n")
     test_load_gp_from_file()
