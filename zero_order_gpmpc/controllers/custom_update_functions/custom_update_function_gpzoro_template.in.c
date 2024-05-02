@@ -29,18 +29,17 @@
  */
 
 // This is a template based custom_update function
-#include <stdlib.h>
-#include <stdio.h>
 #include <assert.h>
 #include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
 
-#include "custom_update_function_gpzoro.h"
-#include "acados_solver_{{ model.name }}.h"
-#include "acados_c/ocp_nlp_interface.h"
 #include "acados/utils/mem.h"
-
+#include "acados_c/ocp_nlp_interface.h"
+#include "acados_solver_{{ model.name }}.h"
 #include "blasfeo/include/blasfeo_d_aux_ext_dep.h"
 #include "blasfeo/include/blasfeo_d_blasfeo_api.h"
+#include "custom_update_function_gpzoro.h"
 
 // clang-format off
 

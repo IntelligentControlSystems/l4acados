@@ -64,7 +64,9 @@ from gpytorch_utils.gp_utils import (
     plot_gp_data,
     generate_grid_points,
 )
-from gpytorch_utils.gp_model import BatchIndependentMultitaskGPModel
+from zero_order_gpmpc.models.gpytorch_models.gpytorch_gp import (
+    BatchIndependentMultitaskGPModel,
+)
 
 
 # %% [markdown]

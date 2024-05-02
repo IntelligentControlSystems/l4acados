@@ -33,7 +33,9 @@ from utils import base_plot, add_plot_trajectory, EllipsoidTubeData2D
 # gpytorch_utils
 from gpytorch_utils.gp_hyperparam_training import generate_train_inputs_zoro, generate_train_outputs_at_inputs, train_gp_model
 from gpytorch_utils.gp_utils import gp_data_from_model_and_path, gp_derivative_data_from_model_and_path, plot_gp_data, generate_grid_points
-from gpytorch_utils.gp_model import BatchIndependentMultitaskGPModel
+from zero_order_gpmpc.models.gpytorch_models.gpytorch_gp import (
+    BatchIndependentMultitaskGPModel,
+)
 
 # -
 
@@ -114,7 +116,7 @@ add_plot_trajectory(ax, plot_data_nom, prob_tighten=None)
 
 # ## Robustify simulation
 #
-# Now we consider the inverted pendulum subject to process noise, i.e., after discretization, 
+# Now we consider the inverted pendulum subject to process noise, i.e., after discretization,
 #
 # $$
 # x_{k+1} = F(x_k, u_k) + w_k,
@@ -126,7 +128,7 @@ add_plot_trajectory(ax, plot_data_nom, prob_tighten=None)
 # \mathrm{Pr}(h(x,u) \leq 0) \geq p_x.
 # $$
 #
-# Note that currently zoRO only accepts upper bounds, i.e., we need to reformulate the nominal constraints $\theta \leq \theta_{ub}$, $-\theta \leq -\theta_{lb}$. 
+# Note that currently zoRO only accepts upper bounds, i.e., we need to reformulate the nominal constraints $\theta \leq \theta_{ub}$, $-\theta \leq -\theta_{lb}$.
 # Afterwards, we consider the tightened constraints
 #
 # $$
@@ -171,7 +173,7 @@ ocp_zoro_nogp.solver_options.nlp_solver_type = "SQP_RTI"
 
 # ### Nominal model with lower bounds
 #
-# The tightenings $\sqrt{\ldots}$ can thereby be automatically defined using the `tighten_model_constraints()` function. 
+# The tightenings $\sqrt{\ldots}$ can thereby be automatically defined using the `tighten_model_constraints()` function.
 
 # +
 # zoro_solver_nogp = ZoroAcados(ocp_zoro_nogp, sim, prob_x, Sigma_x0, Sigma_W+Sigma_GP_prior)
@@ -212,9 +214,9 @@ acados_integrator = AcadosSimSolver(sim, json_file = 'acados_sim_' + sim.model.n
 
 # ## Create zero-order solver (without GP)
 #
-# Everything comes together in the `ZoroAcados` constructor: 
+# Everything comes together in the `ZoroAcados` constructor:
 #
-# - nominal OCP `ocp_zoro_nogp`, 
+# - nominal OCP `ocp_zoro_nogp`,
 # - simulator `AcadosSim` object `sim`,
 # - satisfaction probability `prob_x`,
 # - initial uncertainty `Sigma_x0`,
