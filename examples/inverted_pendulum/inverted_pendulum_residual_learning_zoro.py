@@ -6,7 +6,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.16.0
+#       jupytext_version: 1.16.1
 #   kernelspec:
 #     display_name: Python 3.9.13 ('zero-order-gp-mpc-code-2CX1fffa')
 #     language: python
@@ -16,7 +16,7 @@
 # %%
 import sys, os
 
-sys.path += ["../../"]
+sys.path += ["../../external/"]
 
 # %%
 # %load_ext autoreload
@@ -114,19 +114,17 @@ w_theta = 0.03
 w_omega = 0.03
 Sigma_x0 = np.array([[sigma_theta**2, 0], [0, sigma_omega**2]])
 Sigma_W = np.array([[w_theta**2, 0], [0, w_omega**2]])
-# -
 
 # %% [markdown]
 # ## Set up nominal solver
 
-# +
+# %%
 ocp_init = export_ocp_nominal(N, T, only_lower_bounds=True)
 ocp_init.solver_options.nlp_solver_type = "SQP"
 
 acados_ocp_init_solver = AcadosOcpSolver(
     ocp_init, json_file="acados_ocp_init_simplependulum_ode.json"
 )
-# -
 
 # %% [markdown]
 # ## Open-loop planning with nominal solver
@@ -153,7 +151,6 @@ for i in range(N):
     U_init[i, :] = acados_ocp_init_solver.get(i, "u")
 
 X_init[N, :] = acados_ocp_init_solver.get(N, "x")
-# -
 
 # %%
 import re
@@ -178,7 +175,6 @@ sim.solver_options.T = ocp_init.solver_options.Tsim
 acados_integrator = AcadosSimSolver(
     sim, json_file="acados_sim_" + sim.model.name + ".json"
 )
-# -
 
 # %% [markdown]
 # ## Simulator object
@@ -207,7 +203,6 @@ sim_actual.solver_options.T = dT
 acados_integrator_actual = AcadosSimSolver(
     sim_actual, json_file="acados_sim_" + model_actual.name + ".json"
 )
-# -
 
 # %% [markdown]
 # ## Simulation results (nominal)
@@ -316,6 +311,7 @@ plot_gp_data([gp_data], marker_size_lim=[1, 15])
 # %% [markdown]
 # We can also plot the derivative of the GP. Note that the projected Jacobian is not smooth since our path is not smooth either (jump projection direction = jump in Jacobian); however, the actual Jacobian should be smooth here (squared exponential kernel).
 
+# %%
 gp_derivative_data = gp_derivative_data_from_model_and_path(
     gp_model, likelihood, x_plot, num_samples=0
 )
@@ -342,7 +338,7 @@ y_lim_1 = ax[1].get_ylim()
 # %% [markdown]
 # Jacobian... not much going on away from the data points (this is good!)
 
-# +
+# %%
 gp_derivative_grid_data = gp_derivative_data_from_model_and_path(
     gp_model, likelihood, x_grid, num_samples=0
 )
@@ -357,6 +353,7 @@ plt.draw()
 # %% [markdown]
 # # Residual-Model MPC
 
+# %%
 from zero_order_gpmpc.models.gpytorch_models.gpytorch_residual_model import (
     GPyTorchResidualModel,
 )
@@ -364,10 +361,13 @@ from zero_order_gpmpc.models.gpytorch_models.gpytorch_residual_model import (
 # %%
 residual_model = GPyTorchResidualModel(gp_model)
 
+# %%
 residual_model.evaluate(x_plot_waypts[0:3, :])
 
+# %%
 residual_model.jacobian(x_plot_waypts[0:3, :])
 
+# %%
 residual_model.value_and_jacobian(x_plot_waypts[0:3, :])
 
 # %%
@@ -393,7 +393,6 @@ residual_mpc.ocp_solver.set(N, "x", X_init[N, :])
 
 residual_mpc.solve()
 X_res, U_res = residual_mpc.get_solution()
-# -
 
 # %%
 X_res_sim = np.zeros_like(X_res)
@@ -483,7 +482,6 @@ zoro_solver_cupdate.ocp_solver.set(N, "x", X_init[N, :])
 
 zoro_solver_cupdate.solve()
 X_cup, U_cup, P_cup = zoro_solver_cupdate.get_solution()
-# -
 
 # %% [markdown]
 # ### Custom update (with GP) vs. Residual GP -> the same!
