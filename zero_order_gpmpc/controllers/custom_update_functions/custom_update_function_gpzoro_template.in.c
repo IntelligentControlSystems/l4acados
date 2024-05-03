@@ -524,7 +524,7 @@ static void compute_next_P_matrix(struct blasfeo_dmat* P_mat, struct blasfeo_dma
 
 /**
  * @brief Sets the initial uncertainty Sigma_0.
- * 
+ *
  * We initialize the initial uncertainty matrix P_0 using a diagonal covariance matrix where
  * the elements are read from the first nx elements in the data buffer.
 */
@@ -543,8 +543,8 @@ static void reset_P0_matrix(ocp_nlp_dims *nlp_dims, struct blasfeo_dmat* P_mat, 
 }
 
 /**
- * @brief Update the process noise 
- * 
+ * @brief Update the process noise
+ *
  * We initialize the initial uncertainty matrix P_0 using a diagonal covariance matrix where
  * the elements are read from the first nx elements in the data buffer.
 */
@@ -789,7 +789,7 @@ static void uncertainty_propagate_and_update(ocp_nlp_solver* solver, ocp_nlp_in*
         {%- for it in zoro_description.idx_uh_t %}
         custom_mem->d_uh_tightened[{{it}}] = custom_mem->d_uh[{{it}}]
                         - backoff_scaling_gamma * sqrt(blasfeo_dgeex1(&custom_mem->temp_beta_mat, {{it}}, {{it}}));
-        
+
         // NOTE(@naefjo): make sure tightened bound does not become an empty set
         // TODO(@naefjo): this is not very generalizable. maybe improve?
         // printf("constr for constr %d stage %d, %f\n", {{it}}, ii + 1, custom_mem->d_uh_tightened[{{it}}]);
@@ -909,13 +909,13 @@ static void uncertainty_propagate_and_update(ocp_nlp_solver* solver, ocp_nlp_in*
 
 /**
  * @brief Performs the custom update.
- * 
+ *
  * The array which is passed to the custom update function consists of an input array and
  * an output array [cov_in, cov_out], where
  * cov_in = [Sigma_x0, Sigma_w, [Sigma_GP_i forall i in (0, N-1)]] and
  * cov_out = [-1*ones(3 * (N + 1)))] is a placeholder for the positional covariances used for
  * visualization.
- * 
+ *
  * Note that the function currently only supports setting the diagonal elements of the covariance matrices
  * in the solver.
 */

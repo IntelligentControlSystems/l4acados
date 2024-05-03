@@ -1,0 +1,18 @@
+image: registry.ethz.ch/ics-group/projects/andrea/crs-2.0:latest
+
+stages:
+  - format
+  - test
+
+### =============================================================
+### ==============     FORMATTING STAGE    ======================
+### =============================================================
+
+run formatters: # Check whether code adheres to the required formats
+  stage: format
+  script:
+    - pip3 install pre-commit && pre-commit install
+    - pre-commit run -a
+  retry: 0
+  tags:
+    - deep-thought
