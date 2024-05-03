@@ -1,13 +1,16 @@
 # %%
 import numpy as np
 from acados_template import AcadosModel, AcadosOcp
-from casadi import SX, MX, vertcat, sin, cos, Function
+from casadi import DM, SX, MX, vertcat, sin, cos, Function
 from scipy.linalg import block_diag
 
 
 # %%
 def export_simplependulum_ode_model(
-    noise=False, only_lower_bounds=False, model_name="simplependulum_ode"
+    noise=False,
+    only_lower_bounds=False,
+    add_residual_dynamics=False,
+    model_name="simplependulum_ode",
 ):
     # set up states & controls
     theta = SX.sym("theta")
@@ -32,6 +35,8 @@ def export_simplependulum_ode_model(
     f_expl = vertcat(dtheta, -sin(theta) + u)
     if noise:
         f_expl += w
+    if add_residual_dynamics:
+        f_expl += vertcat(DM(0), -0.5 * sin(theta**2))
 
     f_impl = xdot - f_expl
 

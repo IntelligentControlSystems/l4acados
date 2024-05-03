@@ -13,9 +13,11 @@
 #     name: python3
 # ---
 
+# +
 import sys, os
 
 sys.path += ["../../external/"]
+# -
 
 # %load_ext autoreload
 # %autoreload 1
@@ -92,7 +94,6 @@ dT = T / N
 x0 = np.array([np.pi, 0])
 nx = 2
 nu = 1
-
 # -
 
 # ## Set up nominal solver
@@ -629,7 +630,6 @@ X_gpprior, U_gpprior, P_gpprior = zoro_solver_gpprior.get_solution()
 # Now we see that the training indeed paid off, and reduced uncertainty where we obtained data, i.e., we can go closer to the boundary while still being cautious.
 
 # +
-
 fig, ax = base_plot(lb_theta=lb_theta)
 
 plot_data_gpprior = EllipsoidTubeData2D(

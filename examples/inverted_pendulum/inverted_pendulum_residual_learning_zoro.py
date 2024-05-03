@@ -22,6 +22,7 @@ sys.path += ["../../external/"]
 # %load_ext autoreload
 # %autoreload 1
 # %aimport zero_order_gpmpc
+# %aimport main
 
 # %%
 import numpy as np
@@ -119,9 +120,9 @@ Sigma_W = np.array([[w_theta**2, 0], [0, w_omega**2]])
 # ## Set up nominal solver
 
 # %%
-ocp_init = export_ocp_nominal(N, T, only_lower_bounds=True)
-ocp_init.solver_options.nlp_solver_type = "SQP"
+from main import setup_ocp
 
+ocp_init = setup_ocp(N, T)
 acados_ocp_init_solver = AcadosOcpSolver(
     ocp_init, json_file="acados_ocp_init_simplependulum_ode.json"
 )
@@ -157,21 +158,10 @@ import re
 
 # %%
 # integrator for nominal model
-sim = AcadosSim()
+from main import setup_sim_from_ocp
 
-sim.model = ocp_init.model
-sim.parameter_values = ocp_init.parameter_values
+sim = setup_sim_from_ocp(ocp_init)
 
-for opt_name in dir(ocp_init.solver_options):
-    if opt_name in dir(sim.solver_options) and re.search(r"__.*?__", opt_name) is None:
-        if opt_name == "sim_method_jac_reuse":
-            set_value = int(getattr(ocp_init.solver_options, opt_name)[0])
-        else:
-            set_value = getattr(ocp_init.solver_options, opt_name)
-        print(f"Setting {opt_name} to {set_value}")
-        setattr(sim.solver_options, opt_name, set_value)
-
-sim.solver_options.T = ocp_init.solver_options.Tsim
 acados_integrator = AcadosSimSolver(
     sim, json_file="acados_sim_" + sim.model.name + ".json"
 )
@@ -184,25 +174,48 @@ acados_integrator = AcadosSimSolver(
 # %%
 # generate training data for GP with augmented model
 # "real model"
+# model_actual = export_simplependulum_ode_model(model_name = sim.model.name + "_actual", add_residual_dynamics=True)
+# model_actual = export_simplependulum_ode_model(model_name = sim.model.name + "_actual", add_residual_dynamics=False)
 model_actual = export_simplependulum_ode_model()
-model_actual.f_expl_expr = model_actual.f_expl_expr + cas.vertcat(
-    cas.DM(0), -0.5 * cas.sin((model_actual.x[0]) ** 2)
-)
+# model_actual.f_expl_expr = model_actual.f_expl_expr + cas.vertcat(
+#     cas.DM(0), -0.5 * cas.sin((model_actual.x[0]) ** 2)
+# )
 model_actual.f_impl_expr = model_actual.xdot - model_actual.f_expl_expr
 model_actual.name = model_actual.name + "_actual"
 
 # acados integrator
+# sim_actual = setup_sim_from_ocp(ocp_init)
+# sim_actual.model = model_actual
+
 sim_actual = AcadosSim()
 sim_actual.model = model_actual
 sim_actual.solver_options.integrator_type = "ERK"
 
 # set prediction horizon
 sim_actual.solver_options.T = dT
+# sim_actual.solver_options.T = ocp_init.solver_options.Tsim
+sim_actual.solver_options.newton_iter = ocp_init.solver_options.sim_method_newton_iter
+sim_actual.solver_options.newton_tol = ocp_init.solver_options.sim_method_newton_tol
+sim_actual.solver_options.num_stages = int(
+    ocp_init.solver_options.sim_method_num_stages[0]
+)
+sim_actual.solver_options.num_steps = int(
+    ocp_init.solver_options.sim_method_num_steps[0]
+)
 
 # acados_ocp_solver = AcadosOcpSolver(ocp, json_file = 'acados_ocp_' + model.name + '.json')
 acados_integrator_actual = AcadosSimSolver(
     sim_actual, json_file="acados_sim_" + model_actual.name + ".json"
 )
+
+# %%
+ocp_init.solver_options.Tsim
+
+# %%
+dir(ocp_init.solver_options)
+
+# %%
+dir(sim.solver_options)
 
 # %% [markdown]
 # ## Simulation results (nominal)
@@ -254,6 +267,9 @@ y_train = generate_train_outputs_at_inputs(
     x_train, acados_integrator, acados_integrator_actual, Sigma_W
 )
 
+# %%
+x_train
+
 # %% [markdown]
 # ## Hyper-parameter training for GP model
 #
@@ -268,16 +284,37 @@ likelihood = gpytorch.likelihoods.MultitaskGaussianLikelihood(num_tasks=nout)
 gp_model = BatchIndependentMultitaskGPModel(x_train_tensor, y_train_tensor, likelihood)
 
 # %%
-training_iterations = 200
-rng_seed = 456
+load_gp_model_from_state_dict = True
+state_dict_path_gp_model = "gp_model_state_dict.pth"
+state_dict_path_likelihood = "gp_model_likelihood_state_dict.pth"
+train_data_path = "gp_model_train_data.pth"
 
-gp_model, likelihood = train_gp_model(
-    gp_model, torch_seed=rng_seed, training_iterations=training_iterations
-)
+if load_gp_model_from_state_dict:
+    # Load state dict
+    gp_model.load_state_dict(torch.load(state_dict_path_gp_model))
+    likelihood.load_state_dict(torch.load(state_dict_path_likelihood))
+else:
+    training_iterations = 200
+    rng_seed = 456
+
+    gp_model, likelihood = train_gp_model(
+        gp_model, torch_seed=rng_seed, training_iterations=training_iterations
+    )
 
 # EVAL MODE
 gp_model.eval()
 likelihood.eval()
+
+# %%
+# save GP hyper-params
+torch.save(gp_model.state_dict(), state_dict_path_gp_model)
+torch.save(likelihood.state_dict(), state_dict_path_likelihood)
+torch.save({"x_train": x_train_tensor, "y_train": y_train_tensor}, train_data_path)
+
+
+# %%
+data_dict = torch.load(train_data_path)
+data_dict
 
 # %% [markdown]
 # ## Plot GP predictions
