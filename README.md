@@ -32,7 +32,7 @@ This software is built upon the results of the article "Zero-Order Optimization 
         make install -j4
     ```
 
-4. Set up Python environment (Python version 3.9.13). In the following we use `pipenv`.    
+4. Set up Python environment (Python version 3.9.13). In the following we use `pipenv`.
     1. Change into main directory, then run
         ```bash
             pipenv install
