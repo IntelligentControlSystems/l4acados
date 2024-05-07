@@ -422,23 +422,6 @@ ocp_cupdate = export_ocp_nominal(
 
 sim_cupdate = setup_sim_from_ocp(ocp_cupdate)
 
-# # integrator for nominal model
-# sim_cupdate = AcadosSim()
-
-# sim_cupdate.model = ocp_cupdate.model
-# sim_cupdate.parameter_values = ocp_cupdate.parameter_values
-# for opt_name in dir(ocp_cupdate.solver_options):
-#     if opt_name in dir(sim.solver_options) and re.search(r"__.*?__", opt_name) is None:
-#         set_value = getattr(ocp_cupdate.solver_options, opt_name)
-#         if opt_name == "sim_method_jac_reuse" and isinstance(set_value, list):
-#             set_value = int(set_value[0])
-
-#         print(f"Setting {opt_name} to {set_value}")
-#         setattr(sim.solver_options, opt_name, set_value)
-
-# # set prediction horizon
-# sim_cupdate.solver_options.T = dT
-
 # acados_ocp_solver = AcadosOcpSolver(ocp_cupdate, json_file = 'acados_ocp_' + model.name + '.json')
 acados_integrator_cupdate = AcadosSimSolver(
     sim_cupdate, json_file="acados_sim_" + sim_cupdate.model.name + "_cupdate.json"
@@ -446,18 +429,6 @@ acados_integrator_cupdate = AcadosSimSolver(
 
 # %% metadata={}
 ocp_cupdate = export_ocp_nominal(N, T)
-
-# %% metadata={}
-ocp_cupdate.solver_options.Tsim
-
-# %% metadata={}
-ocp_cupdate.solver_options.tf
-
-# %% metadata={}
-sim_cupdate.solver_options.T
-
-# %% metadata={}
-T
 
 # %% metadata={}
 # tighten constraints
@@ -511,10 +482,3 @@ plot_data_gp_cupdate = EllipsoidTubeData2D(
 )
 add_plot_trajectory(ax, plot_data_gp_cupdate, color_fun=plt.cm.Purples)
 add_plot_trajectory(ax, plot_data_res, color_fun=plt.cm.Reds)
-
-# %% metadata={}
-P_cup
-
-# %% metadata={}
-
-# %%
