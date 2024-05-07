@@ -495,6 +495,9 @@ for i in range(N + 1):
         )
     )
 
+# %% metadata={}
+P_cup
+
 # %% [markdown]
 # ### Custom update (with GP) vs. Residual GP -> the same!
 
@@ -511,5 +514,7 @@ add_plot_trajectory(ax, plot_data_res, color_fun=plt.cm.Reds)
 
 # %% metadata={}
 P_cup
+
+# %% metadata={}
 
 # %%

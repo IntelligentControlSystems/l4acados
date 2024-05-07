@@ -213,6 +213,15 @@ ocp_zoro_nogp.model = ocp_model_tightened
 ocp_zoro_nogp.dims.nh = ocp_model_tightened.con_h_expr.shape[0]
 ocp_zoro_nogp.dims.np = ocp_model_tightened.p.shape[0]
 ocp_zoro_nogp.parameter_values = np.zeros((ocp_zoro_nogp.dims.np,))
+
+# + metadata={}
+ocp_model_tightened.p
+
+# + metadata={}
+ocp_zoro_nogp.dims.np
+
+# + metadata={}
+ocp_zoro_nogp.parameter_values
 # -
 
 # ## Simulator object

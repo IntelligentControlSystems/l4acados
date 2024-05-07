@@ -20,7 +20,7 @@ def base_plot(lb_theta=None):
     return fig, ax
 
 
-def add_plot_ellipse(ax, E, e0, n=50):
+def add_plot_ellipse(ax, E, e0, n=50, **plot_args):
     # sample angle uniformly from [0,2pi] and length from [0,1]
     radius = 1.0
     theta_arr = np.linspace(0, 2 * np.pi, n)
@@ -32,18 +32,24 @@ def add_plot_ellipse(ax, E, e0, n=50):
         ]
     )
     w_ell = np.array([e0 + E @ w_one for w_one in w_one_arr])
-    h = ax.plot(w_ell[:, 0], w_ell[:, 1], linewidth=1)
+    h = ax.plot(w_ell[:, 0], w_ell[:, 1], **plot_args)
     return h
 
 
 def add_plot_trajectory(
-    ax, tube_data: EllipsoidTubeData2D, color_fun=plt.cm.Blues, prob_tighten=1
+    ax,
+    tube_data: EllipsoidTubeData2D,
+    color_fun=plt.cm.Blues,
+    prob_tighten=1,
+    **plot_args
 ):
     n_data = tube_data.center_data.shape[0]
     evenly_spaced_interval = np.linspace(0.6, 1, n_data)
     colors = [color_fun(x) for x in evenly_spaced_interval]
 
-    h_plot = ax.plot(tube_data.center_data[:, 0], tube_data.center_data[:, 1])
+    h_plot = ax.plot(
+        tube_data.center_data[:, 0], tube_data.center_data[:, 1], **plot_args
+    )
     # set color
     h_plot[0].set_color(colors[-1])
 
@@ -60,5 +66,5 @@ def add_plot_trajectory(
                 @ np.transpose(eig_vec)
             )
             # print(i, eig_val, ellipsoid_i)
-            h_ell = add_plot_ellipse(ax, ellipsoid_i_sqrt, center_i)
+            h_ell = add_plot_ellipse(ax, ellipsoid_i_sqrt, center_i, **plot_args)
             h_ell[0].set_color(color)
