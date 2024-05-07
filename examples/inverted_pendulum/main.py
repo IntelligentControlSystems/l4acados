@@ -48,12 +48,6 @@ from zero_order_gpmpc.models.gpytorch_models.gpytorch_gp import (
 )
 
 
-def setup_ocp(N, T, only_lower_bounds=True):
-    ocp = export_ocp_nominal(N, T, only_lower_bounds=only_lower_bounds)
-    ocp.solver_options.nlp_solver_type = "SQP"
-    return ocp
-
-
 def setup_sim_from_ocp(ocp):
     # integrator for nominal model
     sim = AcadosSim()
@@ -66,29 +60,76 @@ def setup_sim_from_ocp(ocp):
             opt_name in dir(sim.solver_options)
             and re.search(r"__.*?__", opt_name) is None
         ):
+            set_value = getattr(ocp.solver_options, opt_name)
+
             if opt_name == "sim_method_jac_reuse":
-                set_value = int(getattr(ocp.solver_options, opt_name)[0])
-            else:
-                set_value = getattr(ocp.solver_options, opt_name)
+                set_value = array_to_int(set_value)
+
             print(f"Setting {opt_name} to {set_value}")
             setattr(sim.solver_options, opt_name, set_value)
 
     sim.solver_options.T = ocp.solver_options.Tsim
     sim.solver_options.newton_iter = ocp.solver_options.sim_method_newton_iter
     sim.solver_options.newton_tol = ocp.solver_options.sim_method_newton_tol
-
-    assert all(
+    sim.solver_options.num_stages = array_to_int(
         ocp.solver_options.sim_method_num_stages
-        == ocp.solver_options.sim_method_num_stages[0]
     )
-    sim.solver_options.num_stages = int(ocp.solver_options.sim_method_num_stages[0])
-    assert all(
-        ocp.solver_options.sim_method_num_steps
-        == ocp.solver_options.sim_method_num_steps[0]
-    )
-    sim.solver_options.num_steps = int(ocp.solver_options.sim_method_num_steps[0])
+    sim.solver_options.num_steps = array_to_int(ocp.solver_options.sim_method_num_steps)
 
     return sim
+
+
+def array_to_int(arr):
+    value = copy.deepcopy(arr)
+    if type(value) is list or type(value) is np.ndarray:
+        assert all(value == value[0])
+        value = value[0]
+
+    return int(value)
+
+
+def get_solution(ocp_solver, x0, N, nx, nu):
+    # get initial values
+    X = np.zeros((N + 1, nx))
+    U = np.zeros((N, nu))
+
+    # xcurrent = x0
+    X[0, :] = x0
+
+    # solve
+    status = ocp_solver.solve()
+
+    if status != 0:
+        raise Exception("acados ocp_solver returned status {}. Exiting.".format(status))
+
+    # get data
+    for i in range(N):
+        X[i, :] = ocp_solver.get(i, "x")
+        U[i, :] = ocp_solver.get(i, "u")
+
+    X[N, :] = ocp_solver.get(N, "x")
+    return X, U
+
+
+def simulate_solution(sim_solver, x0, N, nx, nu, U):
+    # get initial values
+    X = np.zeros((N + 1, nx))
+
+    # xcurrent = x0
+    X[0, :] = x0
+
+    # simulate
+    for i in range(N):
+        sim_solver.set("x", X[i, :])
+        sim_solver.set("u", U[i, :])
+        status = sim_solver.solve()
+        if status != 0:
+            raise Exception(
+                "acados sim_solver returned status {}. Exiting.".format(status)
+            )
+        X[i + 1, :] = sim_solver.get("x")
+
+    return X
 
 
 if __name__ == "__main__":

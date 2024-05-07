@@ -158,5 +158,6 @@ def export_ocp_nominal(N, T, ocp_opts=None, only_lower_bounds=False, **model_kwa
     # ocp.solver_options.nlp_solver_type = 'SQP' # , SQP_RTI
 
     ocp.solver_options.tf = T
+    ocp.solver_options.Tsim = T / N
 
     return ocp
