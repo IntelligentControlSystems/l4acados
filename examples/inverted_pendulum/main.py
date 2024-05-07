@@ -1,4 +1,4 @@
-import sys, os
+import sys, os, shutil
 import argparse
 
 sys.path += ["../../external/"]
@@ -156,7 +156,23 @@ def get_gp_model(ocp_solver, sim_solver, sim_solver_actual, x0, Sigma_W):
     )
 
 
+def init_ocp_solver(ocp_solver, X, U):
+    # initialize with nominal solution
+    N = U.shape[0]
+    print(f"N = {N}, size_X = {X.shape}")
+    for i in range(N):
+        ocp_solver.set(i, "x", X_init[i, :])
+        ocp_solver.set(i, "u", U_init[i, :])
+    ocp_solver.set(N, "x", X_init[N, :])
+
+
 if __name__ == "__main__":
+    # clear existing solver data
+    os.system("rm -r c_generated_code/*")
+    os.system("rm ./acados_*.json")
+    os.system("rm ./jit_*.c")
+    os.system("rm ./tmp_casadi_*")
+
     # arg parser
     parser = argparse.ArgumentParser(description="A foo that bars")
 
@@ -198,7 +214,7 @@ if __name__ == "__main__":
     x0_rand_scale = 0.1
 
     # nominal OCP
-    ocp_init_model_name = "simplependulum_ode_init"
+    ocp_init_model_name = "simplependulum_ode_ocp_init"
     ocp_init = export_ocp_nominal(N, T, model_name=ocp_init_model_name)
     ocp_init.solver_options.nlp_solver_type = "SQP"
     acados_ocp_init_solver = AcadosOcpSolver(
@@ -206,20 +222,42 @@ if __name__ == "__main__":
     )
     X_init, U_init = get_solution(acados_ocp_init_solver, x0, N, nx, nu)
 
-    # nominal sim
-    sim = setup_sim_from_ocp(ocp_init)
-    acados_integrator = AcadosSimSolver(
-        sim, json_file="acados_sim_" + sim.model.name + ".json"
-    )
-
     # actual sim
+    sim_model_name = "simplependulum_ode_sim"
     model_actual = export_simplependulum_ode_model(
-        model_name=sim.model.name + "_actual", add_residual_dynamics=True
+        model_name=sim_model_name + "_actual", add_residual_dynamics=True
     )
     sim_actual = setup_sim_from_ocp(ocp_init)
     sim_actual.model = model_actual
     acados_integrator_actual = AcadosSimSolver(
         sim_actual, json_file="acados_sim_" + sim_actual.model.name + ".json"
+    )
+
+    if solver_name == "zoro_acados":
+        # modify OCP for backwards compatibility with zoro_acados
+        from zero_order_gpmpc.controllers.zoro_acados_utils import (
+            tighten_model_constraints,
+        )
+
+        # tighten constraints
+        idh_tight = np.array([0])  # lower constraint on theta (theta >= 0)
+
+        (
+            ocp_model_tightened,
+            h_jac_x_fun,
+            h_tighten_fun,
+            h_tighten_jac_x_fun,
+            h_tighten_jac_sig_fun,
+        ) = tighten_model_constraints(ocp_init.model, idh_tight, prob_x)
+
+        ocp_init.model = ocp_model_tightened
+        ocp_init.dims.nh = ocp_model_tightened.con_h_expr.shape[0]
+        ocp_init.dims.np = ocp_model_tightened.p.shape[0]
+        ocp_init.parameter_values = np.zeros((ocp_init.dims.np,))
+
+    sim = setup_sim_from_ocp(ocp_init)
+    acados_integrator = AcadosSimSolver(
+        sim, json_file="acados_sim_" + sim.model.name + ".json"
     )
 
     # GP training
@@ -272,6 +310,13 @@ if __name__ == "__main__":
             path_json_sim=f"{solver_name}_sim_solver_config.json",
             build_c_code=True,
         )
+
+        init_ocp_solver(zoro_solver.ocp_solver, X_init, U_init)
+
+        zoro_solver.solve()
+        X, U = zoro_solver.get_solution()
+        P = None
+
     elif solver_name == "zoro_acados_custom_update":
         zoro_solver = ZoroAcadosCustomUpdate(
             ocp_init,
@@ -282,31 +327,16 @@ if __name__ == "__main__":
             h_tightening_idx=[0],
             gp_model=gp_model,
             use_cython=False,
-            path_json_ocp=f"{solver_name}_ocp_solver_config_cupdate.json",
-            path_json_sim=f"{solver_name}_sim_solver_config_cupdate.json",
+            path_json_ocp=f"{solver_name}_ocp_solver_config.json",
+            path_json_sim=f"{solver_name}_sim_solver_config.json",
         )
+
+        init_ocp_solver(zoro_solver.ocp_solver, X_init, U_init)
+
+        zoro_solver.solve()
+        X, U, P = zoro_solver.get_solution()
+
     elif solver_name == "zoro_acados":
-        # zoro_solver_nogp = ZoroAcados(ocp_zoro_nogp, sim, prob_x, Sigma_x0, Sigma_W+Sigma_GP_prior)
-        from zero_order_gpmpc.controllers.zoro_acados_utils import (
-            tighten_model_constraints,
-        )
-
-        # tighten constraints
-        idh_tight = np.array([0])  # lower constraint on theta (theta >= 0)
-
-        (
-            ocp_model_tightened,
-            h_jac_x_fun,
-            h_tighten_fun,
-            h_tighten_jac_x_fun,
-            h_tighten_jac_sig_fun,
-        ) = tighten_model_constraints(ocp_init, idh_tight, prob_x)
-
-        ocp_init.model = ocp_model_tightened
-        ocp_init.dims.nh = ocp_model_tightened.con_h_expr.shape[0]
-        ocp_init.dims.np = ocp_model_tightened.p.shape[0]
-        ocp_init.parameter_values = np.zeros((ocp_init.dims.np,))
-
         zoro_solver = ZoroAcados(
             ocp_init,
             sim,
@@ -315,18 +345,15 @@ if __name__ == "__main__":
             Sigma_W,
             h_tightening_jac_sig_fun=h_tighten_jac_sig_fun,
             gp_model=gp_model,
-            path_json_ocp=f"{solver_name}_ocp_solver_config_cupdate.json",
-            path_json_sim=f"{solver_name}_sim_solver_config_cupdate.json",
+            use_cython=False,
+            path_json_ocp=f"{solver_name}_ocp_solver_config.json",
+            path_json_sim=f"{solver_name}_sim_solver_config.json",
         )
 
-    # initializte with nominal solution
-    for i in range(N):
-        zoro_solver.ocp_solver.set(i, "x", X_init[i, :])
-        zoro_solver.ocp_solver.set(i, "u", U_init[i, :])
-    zoro_solver.ocp_solver.set(N, "x", X_init[N, :])
+        init_ocp_solver(zoro_solver.ocp_solver, X_init, U_init)
 
-    zoro_solver.solve()
-    X, U, P = zoro_solver.get_solution()
+        zoro_solver.solve()
+        X, U, P = zoro_solver.get_solution()
 
     # save data
     data_dict = {
