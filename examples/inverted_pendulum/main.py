@@ -1,4 +1,5 @@
 import sys, os
+import argparse
 
 sys.path += ["../../external/"]
 
@@ -45,6 +46,9 @@ from gpytorch_utils.gp_utils import (
 )
 from zero_order_gpmpc.models.gpytorch_models.gpytorch_gp import (
     BatchIndependentMultitaskGPModel,
+)
+from zero_order_gpmpc.models.gpytorch_models.gpytorch_residual_model import (
+    GPyTorchResidualModel,
 )
 
 
@@ -132,7 +136,35 @@ def simulate_solution(sim_solver, x0, N, nx, nu, U):
     return X
 
 
+def get_gp_model(ocp_solver, sim_solver, sim_solver_actual, x0, Sigma_W):
+    random_seed = 123
+    N_sim_per_x0 = 1
+    N_x0 = 10
+    x0_rand_scale = 0.1
+
+    x_train, x0_arr = generate_train_inputs_acados(
+        ocp_solver,
+        x0,
+        N_sim_per_x0,
+        N_x0,
+        random_seed=random_seed,
+        x0_rand_scale=x0_rand_scale,
+    )
+
+    y_train = generate_train_outputs_at_inputs(
+        x_train, sim_solver, sim_solver_actual, Sigma_W
+    )
+
+
 if __name__ == "__main__":
+    # arg parser
+    parser = argparse.ArgumentParser(description="A foo that bars")
+
+    parser.add_argument("-solver", type=str, default="zero_order_gpmpc")
+    args = parser.parse_args()
+
+    solver_name = args.solver
+
     # build C code again?
     build_c_code = True
 
@@ -158,3 +190,148 @@ if __name__ == "__main__":
     w_omega = 0.03
     Sigma_x0 = np.array([[sigma_theta**2, 0], [0, sigma_omega**2]])
     Sigma_W = np.array([[w_theta**2, 0], [0, w_omega**2]])
+
+    # GP training params
+    random_seed = 123
+    N_sim_per_x0 = 1
+    N_x0 = 10
+    x0_rand_scale = 0.1
+
+    # nominal OCP
+    ocp_init_model_name = "simplependulum_ode_init"
+    ocp_init = export_ocp_nominal(N, T, model_name=ocp_init_model_name)
+    ocp_init.solver_options.nlp_solver_type = "SQP"
+    acados_ocp_init_solver = AcadosOcpSolver(
+        ocp_init, json_file="acados_ocp_" + ocp_init_model_name + ".json"
+    )
+    X_init, U_init = get_solution(acados_ocp_init_solver, x0, N, nx, nu)
+
+    # nominal sim
+    sim = setup_sim_from_ocp(ocp_init)
+    acados_integrator = AcadosSimSolver(
+        sim, json_file="acados_sim_" + sim.model.name + ".json"
+    )
+
+    # actual sim
+    model_actual = export_simplependulum_ode_model(
+        model_name=sim.model.name + "_actual", add_residual_dynamics=True
+    )
+    sim_actual = setup_sim_from_ocp(ocp_init)
+    sim_actual.model = model_actual
+    acados_integrator_actual = AcadosSimSolver(
+        sim_actual, json_file="acados_sim_" + sim_actual.model.name + ".json"
+    )
+
+    # GP training
+    x_train, x0_arr = generate_train_inputs_acados(
+        acados_ocp_init_solver,
+        x0,
+        N_sim_per_x0,
+        N_x0,
+        random_seed=random_seed,
+        x0_rand_scale=x0_rand_scale,
+    )
+
+    y_train = generate_train_outputs_at_inputs(
+        x_train, acados_integrator, acados_integrator_actual, Sigma_W
+    )
+
+    x_train_tensor = torch.Tensor(x_train)
+    y_train_tensor = torch.Tensor(y_train)
+    nout = y_train.shape[1]
+
+    likelihood = gpytorch.likelihoods.MultitaskGaussianLikelihood(num_tasks=nout)
+    gp_model = BatchIndependentMultitaskGPModel(
+        x_train_tensor, y_train_tensor, likelihood
+    )
+
+    training_iterations = 200
+    rng_seed = 456
+
+    gp_model, likelihood = train_gp_model(
+        gp_model, torch_seed=rng_seed, training_iterations=training_iterations
+    )
+
+    gp_model.eval()
+    likelihood.eval()
+
+    residual_model = GPyTorchResidualModel(gp_model)
+
+    # compare different solvers
+    if solver_name == "zero_order_gpmpc":
+        zoro_solver = ZeroOrderGPMPC(
+            ocp_init,
+            sim,
+            prob_x,
+            Sigma_x0,
+            Sigma_W,
+            h_tightening_idx=[0],
+            gp_model=residual_model,
+            use_cython=False,
+            path_json_ocp=f"{solver_name}_ocp_solver_config.json",
+            path_json_sim=f"{solver_name}_sim_solver_config.json",
+            build_c_code=True,
+        )
+    elif solver_name == "zoro_acados_custom_update":
+        zoro_solver = ZoroAcadosCustomUpdate(
+            ocp_init,
+            sim,
+            prob_x,
+            Sigma_x0,
+            Sigma_W,
+            h_tightening_idx=[0],
+            gp_model=gp_model,
+            use_cython=False,
+            path_json_ocp=f"{solver_name}_ocp_solver_config_cupdate.json",
+            path_json_sim=f"{solver_name}_sim_solver_config_cupdate.json",
+        )
+    elif solver_name == "zoro_acados":
+        # zoro_solver_nogp = ZoroAcados(ocp_zoro_nogp, sim, prob_x, Sigma_x0, Sigma_W+Sigma_GP_prior)
+        from zero_order_gpmpc.controllers.zoro_acados_utils import (
+            tighten_model_constraints,
+        )
+
+        # tighten constraints
+        idh_tight = np.array([0])  # lower constraint on theta (theta >= 0)
+
+        (
+            ocp_model_tightened,
+            h_jac_x_fun,
+            h_tighten_fun,
+            h_tighten_jac_x_fun,
+            h_tighten_jac_sig_fun,
+        ) = tighten_model_constraints(ocp_init, idh_tight, prob_x)
+
+        ocp_init.model = ocp_model_tightened
+        ocp_init.dims.nh = ocp_model_tightened.con_h_expr.shape[0]
+        ocp_init.dims.np = ocp_model_tightened.p.shape[0]
+        ocp_init.parameter_values = np.zeros((ocp_init.dims.np,))
+
+        zoro_solver = ZoroAcados(
+            ocp_init,
+            sim,
+            prob_x,
+            Sigma_x0,
+            Sigma_W,
+            h_tightening_jac_sig_fun=h_tighten_jac_sig_fun,
+            gp_model=gp_model,
+            path_json_ocp=f"{solver_name}_ocp_solver_config_cupdate.json",
+            path_json_sim=f"{solver_name}_sim_solver_config_cupdate.json",
+        )
+
+    # initializte with nominal solution
+    for i in range(N):
+        zoro_solver.ocp_solver.set(i, "x", X_init[i, :])
+        zoro_solver.ocp_solver.set(i, "u", U_init[i, :])
+    zoro_solver.ocp_solver.set(N, "x", X_init[N, :])
+
+    zoro_solver.solve()
+    X, U, P = zoro_solver.get_solution()
+
+    # save data
+    data_dict = {
+        "X": X,
+        "U": U,
+        "P": P,
+    }
+    np.save(f"solve_data_{solver_name}.npy", data_dict)

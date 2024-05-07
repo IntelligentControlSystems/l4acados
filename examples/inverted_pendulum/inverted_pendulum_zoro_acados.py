@@ -13,10 +13,10 @@
 #     name: python3
 # ---
 
-# +
+# + metadata={}
 import sys, os
 
-sys.path += ["../../"]
+sys.path += ["../../external"]
 
 import numpy as np
 from scipy.stats import norm
@@ -55,7 +55,6 @@ from gpytorch_utils.gp_utils import (
 from zero_order_gpmpc.models.gpytorch_models.gpytorch_gp import (
     BatchIndependentMultitaskGPModel,
 )
-
 # -
 
 # ## Define model parameters
@@ -84,12 +83,11 @@ dT = T / N
 x0 = np.array([np.pi, 0])
 nx = 2
 nu = 1
-
 # -
 
 # ## Set up nominal solver
 
-# +
+# + metadata={}
 ocp_init = export_ocp_nominal(N, T, only_lower_bounds=True)
 ocp_init.solver_options.nlp_solver_type = "SQP"
 
@@ -126,7 +124,7 @@ X_init[N, :] = acados_ocp_init_solver.get(N, "x")
 
 # ## Simulation results (nominal)
 
-# +
+# + metadata={}
 lb_theta = -ocp_init.constraints.lh[0]
 fig, ax = base_plot(lb_theta=lb_theta)
 
@@ -189,7 +187,7 @@ ocp_zoro_nogp.solver_options.nlp_solver_type = "SQP_RTI"
 #
 # The tightenings $\sqrt{\ldots}$ can thereby be automatically defined using the `tighten_model_constraints()` function.
 
-# +
+# + metadata={}
 # zoro_solver_nogp = ZoroAcados(ocp_zoro_nogp, sim, prob_x, Sigma_x0, Sigma_W+Sigma_GP_prior)
 from zero_order_gpmpc.controllers.zoro_acados_utils import (
     generate_h_tightening_funs_SX,
@@ -221,7 +219,7 @@ ocp_zoro_nogp.parameter_values = np.zeros((ocp_zoro_nogp.dims.np,))
 #
 # To automatically discretize the model (and obtain sensitivities of the discrete-time model) within the zero-order implementation, we create the `AcadosSimSolver` object to pass to the solver.
 
-# +
+# + metadata={}
 # integrator for nominal model
 sim = AcadosSim()
 
@@ -249,7 +247,7 @@ acados_integrator = AcadosSimSolver(
 # - process noise `Sigma_W`,
 # - Jacobian of tightened constraints w.r.t. covariances $P$, `h_tighten_jac_sig_fun`
 
-# +
+# + metadata={}
 # solve with zoRO (no GP model, only process noise)
 zoro_solver_nogp = ZoroAcados(
     ocp_zoro_nogp,
@@ -273,7 +271,7 @@ X_nogp, U_nogp, P_nogp = zoro_solver_nogp.get_solution()
 #
 # Ellipsoids denote the Gaussian confidence intervals, note that one (terminal) ellipsoid "sticks out" since we have omitted the terminal constraint here.
 
-# +
+# + metadata={}
 fig, ax = base_plot(lb_theta=lb_theta)
 
 plot_data_nogp = EllipsoidTubeData2D(
@@ -293,7 +291,7 @@ add_plot_trajectory(
 #
 # We use a model with different parameters to emulate the real-world model and obtain some training data. Also create simulator object for real-world model to evaluate our results later (not used in solver).
 
-# +
+# + metadata={}
 # generate training data for GP with augmented model
 
 # "real model"
@@ -322,7 +320,7 @@ acados_integrator_actual = AcadosSimSolver(
 #
 # We generate training data (one-step ahead residuals `y_train` for starting point `x_train`) here by running robustified (cautious) solver without GP.
 
-# +
+# + metadata={}
 random_seed = 123
 N_sim_per_x0 = 1
 N_x0 = 10
@@ -354,7 +352,7 @@ nout = y_train.shape[1]
 likelihood = gpytorch.likelihoods.MultitaskGaussianLikelihood(num_tasks=nout)
 gp_model = BatchIndependentMultitaskGPModel(x_train_tensor, y_train_tensor, likelihood)
 
-# +
+# + metadata={}
 training_iterations = 500
 rng_seed = 456
 
@@ -371,7 +369,7 @@ likelihood.eval()
 #
 # We plot GP predictions along the predicted trajectory of the robustified solver by projecting the multivariate plot down to a line.
 
-# +
+# + metadata={}
 num_samples = 5
 use_likelihood = False
 
@@ -395,14 +393,16 @@ plot_gp_data([gp_data], marker_size_lim=[1, 15])
 
 # We can also plot the derivative of the GP. Note that the projected Jacobian is not smooth since our path is not smooth either (jump projection direction = jump in Jacobian); however, the actual Jacobian should be smooth here (squared exponential kernel).
 
+# + metadata={}
 gp_derivative_data = gp_derivative_data_from_model_and_path(
     gp_model, likelihood, x_plot, num_samples=0
 )
 plot_gp_data([gp_derivative_data], marker_size_lim=[5, 20], plot_train_data=False)
+# -
 
 # Compare with plotting along a slice of the dimension. Since we generated training data along the path of the robustified controller, the GP looks pretty untrained along a slice of the coordinates.
 
-# +
+# + metadata={}
 # plot along axis
 x_dim_lims = np.array([[0, np.pi], [-2, 1], [-2, 2]])
 x_dim_slice = np.array([1 * np.pi, 0, 0])
@@ -420,7 +420,7 @@ y_lim_1 = ax[1].get_ylim()
 
 # Jacobian... not much going on away from the data points (this is good!)
 
-# +
+# + metadata={}
 gp_derivative_grid_data = gp_derivative_data_from_model_and_path(
     gp_model, likelihood, x_grid, num_samples=0
 )
@@ -437,7 +437,7 @@ plt.draw()
 #
 # We can add the GP model to the solver by simply adding it as an argument to the `ZoroAcados` function. Therefore we copy (important!) the robustified controller and then instantiate another solver object.
 
-# +
+# + metadata={}
 from copy import deepcopy
 
 ocp_zoro = deepcopy(ocp_zoro_nogp)
@@ -465,7 +465,7 @@ X, U, P = zoro_solver.get_solution()
 #
 # Plotting trained GP against no-GP, we see that the GP-MPC controller still has higher uncertainties than the robustified one. This is because the GP covariance, albeit being small where data points are, is *added* to the process noise, i.e., we make the controller even more cautious.
 
-# +
+# + metadata={}
 fig, ax = base_plot(lb_theta=lb_theta)
 
 plot_data_gp = EllipsoidTubeData2D(
@@ -490,9 +490,10 @@ Sigma_GP_prior = gp_model.covar_module(y_test).numpy()
 
 Sigma_GP_prior = np.diag(Sigma_GP_prior.flatten())
 Sigma_GP_prior
-# -
 
+# + metadata={}
 Sigma_W
+# -
 
 # Especially in the velocity component, this really makes a difference!
 
@@ -500,7 +501,7 @@ Sigma_W + Sigma_GP_prior
 
 # Now we solve again with *unconditioned* GP and compare...
 
-# +
+# + metadata={}
 # zoro_solver_gpprior = ZoroAcados(ocp_zoro_gpprior, sim, prob_x, Sigma_x0, Sigma_W+Sigma_GP_prior)
 zoro_solver_gpprior = ZoroAcados(
     ocp_zoro_gpprior,
@@ -516,7 +517,7 @@ for i in range(N):
     zoro_solver_gpprior.ocp_solver.set(i, "u", U_init[i, :])
 zoro_solver_gpprior.ocp_solver.set(N, "x", X_init[N, :])
 
-# +
+# + metadata={}
 zoro_solver_gpprior.solve()
 
 X_gpprior, U_gpprior, P_gpprior = zoro_solver_gpprior.get_solution()
@@ -526,8 +527,7 @@ X_gpprior, U_gpprior, P_gpprior = zoro_solver_gpprior.get_solution()
 #
 # Now we see that the training indeed paid off, and reduced uncertainty where we obtained data, i.e., we can go closer to the boundary while still being cautious.
 
-# +
-
+# + metadata={}
 fig, ax = base_plot(lb_theta=lb_theta)
 
 plot_data_gpprior = EllipsoidTubeData2D(
