@@ -255,14 +255,16 @@ def solve_pendulum(solver_name):
 
 if __name__ == "__main__":
     # arg parser
-    parser = argparse.ArgumentParser(description="A foo that bars")
+    parser = argparse.ArgumentParser(
+        description="Solve the pendulum OCP with a given solver."
+    )
 
     parser.add_argument("-solver", type=str, default="zero_order_gpmpc")
     args = parser.parse_args()
 
     solver_name = args.solver
 
-    X, U, P = solve(solver_name)
+    X, U, P = solve_pendulum(solver_name)
 
     # save data
     data_dict = {
