@@ -2,3 +2,4 @@ from .residual_learning_mpc import ResidualLearningMPC
 from .zoro_acados import ZoroAcados
 from .zoro_acados_custom_update import ZoroAcadosCustomUpdate
 from .zoro_acados_residual_learning import ZeroOrderGPMPC
+from .zoro_acados_utils import setup_sim_from_ocp

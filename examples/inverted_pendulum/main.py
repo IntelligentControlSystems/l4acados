@@ -1,364 +1,76 @@
-import sys, os, shutil
-import argparse
+# ---
+# jupyter:
+#   jupytext:
+#     formats: ipynb,py
+#     text_representation:
+#       extension: .py
+#       format_name: light
+#       format_version: '1.5'
+#       jupytext_version: 1.16.1
+#   kernelspec:
+#     display_name: Python 3.9.13 ('zero-order-gp-mpc-code-2CX1fffa')
+#     language: python
+#     name: python3
+# ---
 
-sys.path += ["../../external/"]
+# + metadata={}
+# %load_ext autoreload
+# %autoreload 1
+# %aimport run_example
 
-import numpy as np
-from scipy.stats import norm
-import casadi as cas
-from acados_template import (
-    AcadosOcp,
-    AcadosSim,
-    AcadosSimSolver,
-    AcadosOcpSolver,
-    AcadosOcpOptions,
-)
+# + metadata={}
+from run_example import solve_pendulum
+from utils import base_plot, EllipsoidTubeData2D, add_plot_trajectory
 import matplotlib.pyplot as plt
-import torch
-import gpytorch
-import copy
-import re
 
-# zoRO imports
-import zero_order_gpmpc
-from zero_order_gpmpc.controllers import (
-    ZoroAcados,
-    ZoroAcadosCustomUpdate,
-    ZeroOrderGPMPC,
+# -
+
+# ## Inverted pendulum model
+#
+# We model the inverted pendulum
+#
+# $$
+# \dot{x} = f(x,u) = \begin{bmatrix} \dot{\theta} \\ \ddot{\theta} \end{bmatrix} = \begin{bmatrix} \dot{\theta} \\ -\sin(\theta) + u \end{bmatrix},
+# $$
+#
+# which is to be controlled from the hanging-down resting position, $(\theta_0, \dot{\theta}_0) = (\pi, 0)$, to the upright position ($(\theta_r, \dot{\theta}_r) = (0,0)$), subject to the constraints that overshoot should be avoided, i.e.,
+#
+# $$
+# \theta_{lb} \leq \theta \leq \theta_{ub}.
+# $$
+#
+# The model setup and controller definition can be found in the functions `export_simplependulum_ode_model()`, `export_ocp_nominal()` in the `inverted_pendulum_model_acados.py` file.
+
+# + metadata={}
+X_zoro_acados, U_zoro_acados, P_zoro_acados = solve_pendulum("zoro_acados")
+X_zoro_cupdate, U_zoro_cupdate, P_zoro_cupdate = solve_pendulum(
+    "zoro_acados_custom_update"
 )
-from inverted_pendulum_model_acados import (
-    export_simplependulum_ode_model,
-    export_ocp_nominal,
+X_zero_order_gpmpc, U_zero_order_gpmpc, P_zero_order_gpmpc = solve_pendulum(
+    "zero_order_gpmpc"
 )
-from utils import base_plot, add_plot_trajectory, EllipsoidTubeData2D
+# -
 
-# gpytorch_utils
-from gpytorch_utils.gp_hyperparam_training import (
-    generate_train_inputs_acados,
-    generate_train_outputs_at_inputs,
-    train_gp_model,
+# ## Plot results
+
+# + metadata={}
+lb_theta = 0.0
+fig, ax = base_plot(lb_theta=lb_theta)
+
+plot_data_zoro_acados = EllipsoidTubeData2D(
+    center_data=X_zoro_acados, ellipsoid_data=P_zoro_acados
 )
-from gpytorch_utils.gp_utils import (
-    gp_data_from_model_and_path,
-    gp_derivative_data_from_model_and_path,
-    plot_gp_data,
-    generate_grid_points,
+plot_data_zoro_cupdate = EllipsoidTubeData2D(
+    center_data=X_zoro_cupdate, ellipsoid_data=P_zoro_cupdate
 )
-from zero_order_gpmpc.models.gpytorch_models.gpytorch_gp import (
-    BatchIndependentMultitaskGPModel,
+plot_data_zero_order_gpmpc = EllipsoidTubeData2D(
+    center_data=X_zero_order_gpmpc, ellipsoid_data=P_zero_order_gpmpc
 )
-from zero_order_gpmpc.models.gpytorch_models.gpytorch_residual_model import (
-    GPyTorchResidualModel,
-)
+add_plot_trajectory(ax, plot_data_zoro_acados, color_fun=plt.cm.Purples, linewidth=5)
+add_plot_trajectory(ax, plot_data_zoro_cupdate, color_fun=plt.cm.Oranges, linewidth=3)
+add_plot_trajectory(ax, plot_data_zero_order_gpmpc, color_fun=plt.cm.Blues, linewidth=1)
 
+plt.title("All controllers should give the same result")
 
-def setup_sim_from_ocp(ocp):
-    # integrator for nominal model
-    sim = AcadosSim()
-
-    sim.model = ocp.model
-    sim.parameter_values = ocp.parameter_values
-
-    for opt_name in dir(ocp.solver_options):
-        if (
-            opt_name in dir(sim.solver_options)
-            and re.search(r"__.*?__", opt_name) is None
-        ):
-            set_value = getattr(ocp.solver_options, opt_name)
-
-            if opt_name == "sim_method_jac_reuse":
-                set_value = array_to_int(set_value)
-
-            print(f"Setting {opt_name} to {set_value}")
-            setattr(sim.solver_options, opt_name, set_value)
-
-    sim.solver_options.T = ocp.solver_options.Tsim
-    sim.solver_options.newton_iter = ocp.solver_options.sim_method_newton_iter
-    sim.solver_options.newton_tol = ocp.solver_options.sim_method_newton_tol
-    sim.solver_options.num_stages = array_to_int(
-        ocp.solver_options.sim_method_num_stages
-    )
-    sim.solver_options.num_steps = array_to_int(ocp.solver_options.sim_method_num_steps)
-
-    return sim
-
-
-def array_to_int(arr):
-    value = copy.deepcopy(arr)
-    if type(value) is list or type(value) is np.ndarray:
-        assert all(value == value[0])
-        value = value[0]
-
-    return int(value)
-
-
-def get_solution(ocp_solver, x0, N, nx, nu):
-    # get initial values
-    X = np.zeros((N + 1, nx))
-    U = np.zeros((N, nu))
-
-    # xcurrent = x0
-    X[0, :] = x0
-
-    # solve
-    status = ocp_solver.solve()
-
-    if status != 0:
-        raise Exception("acados ocp_solver returned status {}. Exiting.".format(status))
-
-    # get data
-    for i in range(N):
-        X[i, :] = ocp_solver.get(i, "x")
-        U[i, :] = ocp_solver.get(i, "u")
-
-    X[N, :] = ocp_solver.get(N, "x")
-    return X, U
-
-
-def simulate_solution(sim_solver, x0, N, nx, nu, U):
-    # get initial values
-    X = np.zeros((N + 1, nx))
-
-    # xcurrent = x0
-    X[0, :] = x0
-
-    # simulate
-    for i in range(N):
-        sim_solver.set("x", X[i, :])
-        sim_solver.set("u", U[i, :])
-        status = sim_solver.solve()
-        if status != 0:
-            raise Exception(
-                "acados sim_solver returned status {}. Exiting.".format(status)
-            )
-        X[i + 1, :] = sim_solver.get("x")
-
-    return X
-
-
-def get_gp_model(ocp_solver, sim_solver, sim_solver_actual, x0, Sigma_W):
-    random_seed = 123
-    N_sim_per_x0 = 1
-    N_x0 = 10
-    x0_rand_scale = 0.1
-
-    x_train, x0_arr = generate_train_inputs_acados(
-        ocp_solver,
-        x0,
-        N_sim_per_x0,
-        N_x0,
-        random_seed=random_seed,
-        x0_rand_scale=x0_rand_scale,
-    )
-
-    y_train = generate_train_outputs_at_inputs(
-        x_train, sim_solver, sim_solver_actual, Sigma_W
-    )
-
-
-def init_ocp_solver(ocp_solver, X, U):
-    # initialize with nominal solution
-    N = U.shape[0]
-    print(f"N = {N}, size_X = {X.shape}")
-    for i in range(N):
-        ocp_solver.set(i, "x", X_init[i, :])
-        ocp_solver.set(i, "u", U_init[i, :])
-    ocp_solver.set(N, "x", X_init[N, :])
-
-
-if __name__ == "__main__":
-    # clear existing solver data
-    os.system("rm -r c_generated_code/*")
-    os.system("rm ./acados_*.json")
-    os.system("rm ./jit_*.c")
-    os.system("rm ./tmp_casadi_*")
-
-    # arg parser
-    parser = argparse.ArgumentParser(description="A foo that bars")
-
-    parser.add_argument("-solver", type=str, default="zero_order_gpmpc")
-    args = parser.parse_args()
-
-    solver_name = args.solver
-
-    # build C code again?
-    build_c_code = True
-
-    # discretization
-    N = 30
-    T = 5
-    dT = T / N
-
-    # constraints
-    x0 = np.array([np.pi, 0])
-    nx = 2
-    nu = 1
-
-    # uncertainty
-    prob_x = 0.9
-    prob_tighten = norm.ppf(prob_x)
-
-    # noise
-    # uncertainty dynamics
-    sigma_theta = (0.0001 / 360.0) * 2 * np.pi
-    sigma_omega = (0.0001 / 360.0) * 2 * np.pi
-    w_theta = 0.03
-    w_omega = 0.03
-    Sigma_x0 = np.array([[sigma_theta**2, 0], [0, sigma_omega**2]])
-    Sigma_W = np.array([[w_theta**2, 0], [0, w_omega**2]])
-
-    # GP training params
-    random_seed = 123
-    N_sim_per_x0 = 1
-    N_x0 = 10
-    x0_rand_scale = 0.1
-
-    # nominal OCP
-    ocp_init_model_name = "simplependulum_ode_ocp_init"
-    ocp_init = export_ocp_nominal(N, T, model_name=ocp_init_model_name)
-    ocp_init.solver_options.nlp_solver_type = "SQP"
-    acados_ocp_init_solver = AcadosOcpSolver(
-        ocp_init, json_file="acados_ocp_" + ocp_init_model_name + ".json"
-    )
-    X_init, U_init = get_solution(acados_ocp_init_solver, x0, N, nx, nu)
-
-    # actual sim
-    sim_model_name = "simplependulum_ode_sim"
-    model_actual = export_simplependulum_ode_model(
-        model_name=sim_model_name + "_actual", add_residual_dynamics=True
-    )
-    sim_actual = setup_sim_from_ocp(ocp_init)
-    sim_actual.model = model_actual
-    acados_integrator_actual = AcadosSimSolver(
-        sim_actual, json_file="acados_sim_" + sim_actual.model.name + ".json"
-    )
-
-    if solver_name == "zoro_acados":
-        # modify OCP for backwards compatibility with zoro_acados
-        from zero_order_gpmpc.controllers.zoro_acados_utils import (
-            tighten_model_constraints,
-        )
-
-        # tighten constraints
-        idh_tight = np.array([0])  # lower constraint on theta (theta >= 0)
-
-        (
-            ocp_model_tightened,
-            h_jac_x_fun,
-            h_tighten_fun,
-            h_tighten_jac_x_fun,
-            h_tighten_jac_sig_fun,
-        ) = tighten_model_constraints(ocp_init.model, idh_tight, prob_x)
-
-        ocp_init.model = ocp_model_tightened
-        ocp_init.dims.nh = ocp_model_tightened.con_h_expr.shape[0]
-        ocp_init.dims.np = ocp_model_tightened.p.shape[0]
-        ocp_init.parameter_values = np.zeros((ocp_init.dims.np,))
-
-    sim = setup_sim_from_ocp(ocp_init)
-    acados_integrator = AcadosSimSolver(
-        sim, json_file="acados_sim_" + sim.model.name + ".json"
-    )
-
-    # GP training
-    x_train, x0_arr = generate_train_inputs_acados(
-        acados_ocp_init_solver,
-        x0,
-        N_sim_per_x0,
-        N_x0,
-        random_seed=random_seed,
-        x0_rand_scale=x0_rand_scale,
-    )
-
-    y_train = generate_train_outputs_at_inputs(
-        x_train, acados_integrator, acados_integrator_actual, Sigma_W
-    )
-
-    x_train_tensor = torch.Tensor(x_train)
-    y_train_tensor = torch.Tensor(y_train)
-    nout = y_train.shape[1]
-
-    likelihood = gpytorch.likelihoods.MultitaskGaussianLikelihood(num_tasks=nout)
-    gp_model = BatchIndependentMultitaskGPModel(
-        x_train_tensor, y_train_tensor, likelihood
-    )
-
-    training_iterations = 200
-    rng_seed = 456
-
-    gp_model, likelihood = train_gp_model(
-        gp_model, torch_seed=rng_seed, training_iterations=training_iterations
-    )
-
-    gp_model.eval()
-    likelihood.eval()
-
-    residual_model = GPyTorchResidualModel(gp_model)
-
-    # compare different solvers
-    if solver_name == "zero_order_gpmpc":
-        zoro_solver = ZeroOrderGPMPC(
-            ocp_init,
-            sim,
-            prob_x,
-            Sigma_x0,
-            Sigma_W,
-            h_tightening_idx=[0],
-            gp_model=residual_model,
-            use_cython=False,
-            path_json_ocp=f"{solver_name}_ocp_solver_config.json",
-            path_json_sim=f"{solver_name}_sim_solver_config.json",
-            build_c_code=True,
-        )
-
-        init_ocp_solver(zoro_solver.ocp_solver, X_init, U_init)
-
-        zoro_solver.solve()
-        X, U = zoro_solver.get_solution()
-        P = None
-
-    elif solver_name == "zoro_acados_custom_update":
-        zoro_solver = ZoroAcadosCustomUpdate(
-            ocp_init,
-            sim,
-            prob_x,
-            Sigma_x0,
-            Sigma_W,
-            h_tightening_idx=[0],
-            gp_model=gp_model,
-            use_cython=False,
-            path_json_ocp=f"{solver_name}_ocp_solver_config.json",
-            path_json_sim=f"{solver_name}_sim_solver_config.json",
-        )
-
-        init_ocp_solver(zoro_solver.ocp_solver, X_init, U_init)
-
-        zoro_solver.solve()
-        X, U, P = zoro_solver.get_solution()
-
-    elif solver_name == "zoro_acados":
-        zoro_solver = ZoroAcados(
-            ocp_init,
-            sim,
-            prob_x,
-            Sigma_x0,
-            Sigma_W,
-            h_tightening_jac_sig_fun=h_tighten_jac_sig_fun,
-            gp_model=gp_model,
-            use_cython=False,
-            path_json_ocp=f"{solver_name}_ocp_solver_config.json",
-            path_json_sim=f"{solver_name}_sim_solver_config.json",
-        )
-
-        init_ocp_solver(zoro_solver.ocp_solver, X_init, U_init)
-
-        zoro_solver.solve()
-        X, U, P = zoro_solver.get_solution()
-
-    # save data
-    data_dict = {
-        "X": X,
-        "U": U,
-        "P": P,
-    }
-    np.save(f"solve_data_{solver_name}.npy", data_dict)
+plt.show()
+# -
