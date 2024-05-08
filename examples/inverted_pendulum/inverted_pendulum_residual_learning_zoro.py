@@ -22,7 +22,7 @@ sys.path += ["../../external/"]
 # %load_ext autoreload
 # %autoreload 1
 # %aimport zero_order_gpmpc
-# %aimport main
+# %aimport run_example
 
 # %% metadata={}
 import numpy as np
@@ -46,12 +46,13 @@ from zero_order_gpmpc.controllers import (
     ZoroAcados,
     ZoroAcadosCustomUpdate,
     ZeroOrderGPMPC,
+    setup_sim_from_ocp,
 )
 from inverted_pendulum_model_acados import (
     export_simplependulum_ode_model,
     export_ocp_nominal,
 )
-from utils import base_plot, add_plot_trajectory, EllipsoidTubeData2D
+from utils import *
 
 # gpytorch_utils
 from gpytorch_utils.gp_hyperparam_training import (
@@ -138,12 +139,10 @@ ocp_init.solver_options.Tsim
 # ## Open-loop planning with nominal solver
 
 # %% metadata={}
-X_init, U_init = main.get_solution(acados_ocp_init_solver, x0, N, nx, nu)
+X_init, U_init = get_solution(acados_ocp_init_solver, x0, N, nx, nu)
 
 # %% metadata={}
 # integrator for nominal model
-from main import setup_sim_from_ocp
-
 sim = setup_sim_from_ocp(ocp_init)
 
 acados_integrator = AcadosSimSolver(
@@ -174,7 +173,7 @@ acados_integrator_actual = AcadosSimSolver(
 # ## Simulation results (nominal)
 
 # %% metadata={}
-X_init_sim = main.simulate_solution(acados_integrator_actual, x0, N, nx, nu, U_init)
+X_init_sim = simulate_solution(acados_integrator_actual, x0, N, nx, nu, U_init)
 
 # %% metadata={}
 lb_theta = -ocp_init.constraints.lh[0]
@@ -231,7 +230,7 @@ likelihood = gpytorch.likelihoods.MultitaskGaussianLikelihood(num_tasks=nout)
 gp_model = BatchIndependentMultitaskGPModel(x_train_tensor, y_train_tensor, likelihood)
 
 # %% metadata={}
-load_gp_model_from_state_dict = True
+load_gp_model_from_state_dict = False
 state_dict_path_gp_model = "gp_model_state_dict.pth"
 state_dict_path_likelihood = "gp_model_likelihood_state_dict.pth"
 train_data_path = "gp_model_train_data.pth"
