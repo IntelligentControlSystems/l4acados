@@ -371,23 +371,23 @@ def generate_gp_funs(gp_model, covar_jac=False, B=None):
 def transform_ocp(ocp_input):
     ocp = deepcopy(ocp_input)
 
-    nx = ocp.dims.nx
-    nu = ocp.dims.nu
-    nparam = ocp.dims.np
-    nh = ocp.model.con_h_expr.shape[0]
+    original_nparam = ocp.dims.np
 
     model_lin = export_linear_model(ocp.model.x, ocp.model.u, ocp.model.p)
-    model_lin.con_h_expr = ocp.model.con_h_expr
-    model_lin.cost_expr_ext_cost = ocp.model.cost_expr_ext_cost
-    model_lin.cost_expr_ext_cost_e = ocp.model.cost_expr_ext_cost_e
-    ocp.model = model_lin
+    ocp.model.disc_dyn_expr = model_lin.disc_dyn_expr
+    ocp.model.f_impl_expr = model_lin.f_impl_expr
+    ocp.model.f_expl_expr = model_lin.f_expl_expr
+    ocp.model.x = model_lin.x
+    ocp.model.xdot = model_lin.xdot
+    ocp.model.u = model_lin.u
+    ocp.model.p = model_lin.p
+    ocp.model.name = model_lin.name
     ocp.dims.np = model_lin.p.shape[0]
-    ocp.dims.nh = model_lin.con_h_expr.shape[0]
 
     ocp_parameter_values = ocp.parameter_values
     ocp.parameter_values = np.zeros((model_lin.p.shape[0],))
-    if nparam > 0:
-        ocp.parameter_values[-nparam:] = ocp_parameter_values
+    if original_nparam > 0:
+        ocp.parameter_values[-original_nparam:] = ocp_parameter_values
 
     ocp.solver_options.integrator_type = "DISCRETE"
     ocp.solver_options.nlp_solver_type = "SQP_RTI"
