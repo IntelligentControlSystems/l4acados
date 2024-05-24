@@ -1,5 +1,5 @@
 from casadi import SX, MX, vertcat
-from acados_template import AcadosModel
+from acados_template import AcadosModel, AcadosSim
 import torch
 import gpytorch
 import casadi as cas
@@ -7,6 +7,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy.stats import norm
 from copy import deepcopy
+import re
+import copy
 
 timings_names_default = [
     "build_lin_model",
@@ -493,3 +495,43 @@ def propagate(P0, Afun, B, Wfun, y_all, N_sim):
         y = y_all[i, :]
         P_return[i + 1] = P_propagation(P_return[i], Afun(y), B, Wfun(y))
     return P_return
+
+
+def setup_sim_from_ocp(ocp):
+    # integrator for nominal model
+    sim = AcadosSim()
+
+    sim.model = ocp.model
+    sim.parameter_values = ocp.parameter_values
+
+    for opt_name in dir(ocp.solver_options):
+        if (
+            opt_name in dir(sim.solver_options)
+            and re.search(r"__.*?__", opt_name) is None
+        ):
+            set_value = getattr(ocp.solver_options, opt_name)
+
+            if opt_name == "sim_method_jac_reuse":
+                set_value = array_to_int(set_value)
+
+            print(f"Setting {opt_name} to {set_value}")
+            setattr(sim.solver_options, opt_name, set_value)
+
+    sim.solver_options.T = ocp.solver_options.Tsim
+    sim.solver_options.newton_iter = ocp.solver_options.sim_method_newton_iter
+    sim.solver_options.newton_tol = ocp.solver_options.sim_method_newton_tol
+    sim.solver_options.num_stages = array_to_int(
+        ocp.solver_options.sim_method_num_stages
+    )
+    sim.solver_options.num_steps = array_to_int(ocp.solver_options.sim_method_num_steps)
+
+    return sim
+
+
+def array_to_int(arr):
+    value = copy.deepcopy(arr)
+    if type(value) is list or type(value) is np.ndarray:
+        assert all(value == value[0])
+        value = value[0]
+
+    return int(value)

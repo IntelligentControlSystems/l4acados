@@ -129,7 +129,7 @@ class ZeroOrderGPMPC(ResidualLearningMPC):
         # Copy custom update functions into acados
         # First find location where acados-template is installed.
         pip_output = check_output(["pip", "show", "acados-template"]).decode().split()
-        path_to_acados_template = pip_output[pip_output.index("Location:") + 1]
+        path_to_acados_template = pip_output[pip_output.index("Editable") + 3]
 
         # Then concat the full path to the template folder.
         path_acados_custom_update = os.path.join(
@@ -176,7 +176,7 @@ class ZeroOrderGPMPC(ResidualLearningMPC):
         zoro_description.W_mat = self.Sigma_W
         """W in (nw, nw) describes the covariance of the noise on the system"""
 
-        zoro_description.idx_uh_t = self.tighten_idx
+        zoro_description.idx_lh_t = self.tighten_idx
         self.ocp.zoro_description = zoro_description
 
     def do_custom_update(self) -> None:

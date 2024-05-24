@@ -13,17 +13,18 @@
 #     name: python3
 # ---
 
-# %%
+# %% metadata={}
 import sys, os
 
 sys.path += ["../../external/"]
 
-# %%
+# %% metadata={}
 # %load_ext autoreload
 # %autoreload 1
 # %aimport zero_order_gpmpc
+# %aimport run_example
 
-# %%
+# %% metadata={}
 import numpy as np
 from scipy.stats import norm
 import casadi as cas
@@ -45,12 +46,13 @@ from zero_order_gpmpc.controllers import (
     ZoroAcados,
     ZoroAcadosCustomUpdate,
     ZeroOrderGPMPC,
+    setup_sim_from_ocp,
 )
 from inverted_pendulum_model_acados import (
     export_simplependulum_ode_model,
     export_ocp_nominal,
 )
-from utils import base_plot, add_plot_trajectory, EllipsoidTubeData2D
+from utils import *
 
 # gpytorch_utils
 from gpytorch_utils.gp_hyperparam_training import (
@@ -86,11 +88,11 @@ from zero_order_gpmpc.models.gpytorch_models.gpytorch_gp import (
 #
 # The model setup and controller definition can be found in the functions `export_simplependulum_ode_model()`, `export_ocp_nominal()` in the `inverted_pendulum_model_acados.py` file.
 
-# %%
+# %% metadata={}
 # build C code again?
 build_c_code = True
 
-# %%
+# %% metadata={}
 # discretization
 N = 30
 T = 5
@@ -102,8 +104,8 @@ nx = 2
 nu = 1
 
 
-# %%
-prob_x = 0.9
+# %% metadata={}
+prob_x = 0.99
 prob_tighten = norm.ppf(prob_x)
 
 # noise
@@ -118,60 +120,31 @@ Sigma_W = np.array([[w_theta**2, 0], [0, w_omega**2]])
 # %% [markdown]
 # ## Set up nominal solver
 
-# %%
-ocp_init = export_ocp_nominal(N, T, only_lower_bounds=True)
+# %% metadata={}
+ocp_init = export_ocp_nominal(N, T, model_name="simplependulum_ode_init")
 ocp_init.solver_options.nlp_solver_type = "SQP"
 
+# %% metadata={}
+ocp_init.solver_options.Tsim
+
+# %% metadata={}
 acados_ocp_init_solver = AcadosOcpSolver(
     ocp_init, json_file="acados_ocp_init_simplependulum_ode.json"
 )
 
+# %% metadata={}
+ocp_init.solver_options.Tsim
+
 # %% [markdown]
 # ## Open-loop planning with nominal solver
 
-# %%
-# get initial values
-X_init = np.zeros((N + 1, nx))
-U_init = np.zeros((N, nu))
+# %% metadata={}
+X_init, U_init = get_solution(acados_ocp_init_solver, x0, N, nx, nu)
 
-# xcurrent = x0
-X_init[0, :] = x0
-
-# solve
-status_init = acados_ocp_init_solver.solve()
-
-if status_init != 0:
-    raise Exception(
-        "acados acados_ocp_solver returned status {}. Exiting.".format(status_init)
-    )
-
-# get data
-for i in range(N):
-    X_init[i, :] = acados_ocp_init_solver.get(i, "x")
-    U_init[i, :] = acados_ocp_init_solver.get(i, "u")
-
-X_init[N, :] = acados_ocp_init_solver.get(N, "x")
-
-# %%
-import re
-
-# %%
+# %% metadata={}
 # integrator for nominal model
-sim = AcadosSim()
+sim = setup_sim_from_ocp(ocp_init)
 
-sim.model = ocp_init.model
-sim.parameter_values = ocp_init.parameter_values
-
-for opt_name in dir(ocp_init.solver_options):
-    if opt_name in dir(sim.solver_options) and re.search(r"__.*?__", opt_name) is None:
-        if opt_name == "sim_method_jac_reuse":
-            set_value = int(getattr(ocp_init.solver_options, opt_name)[0])
-        else:
-            set_value = getattr(ocp_init.solver_options, opt_name)
-        print(f"Setting {opt_name} to {set_value}")
-        setattr(sim.solver_options, opt_name, set_value)
-
-sim.solver_options.T = ocp_init.solver_options.Tsim
 acados_integrator = AcadosSimSolver(
     sim, json_file="acados_sim_" + sim.model.name + ".json"
 )
@@ -181,23 +154,15 @@ acados_integrator = AcadosSimSolver(
 #
 # To automatically discretize the model (and obtain sensitivities of the discrete-time model) within the zero-order implementation, we create the `AcadosSimSolver` object to pass to the solver.
 
-# %%
-# generate training data for GP with augmented model
-# "real model"
-model_actual = export_simplependulum_ode_model()
-model_actual.f_expl_expr = model_actual.f_expl_expr + cas.vertcat(
-    cas.DM(0), -0.5 * cas.sin((model_actual.x[0]) ** 2)
+# %% metadata={}
+# generate training data for GP with "real model"
+model_actual = export_simplependulum_ode_model(
+    model_name=sim.model.name + "_actual", add_residual_dynamics=True
 )
-model_actual.f_impl_expr = model_actual.xdot - model_actual.f_expl_expr
-model_actual.name = model_actual.name + "_actual"
+# model_actual = export_simplependulum_ode_model(model_name = sim.model.name + "_actual", add_residual_dynamics=False)
 
-# acados integrator
-sim_actual = AcadosSim()
+sim_actual = setup_sim_from_ocp(ocp_init)
 sim_actual.model = model_actual
-sim_actual.solver_options.integrator_type = "ERK"
-
-# set prediction horizon
-sim_actual.solver_options.T = dT
 
 # acados_ocp_solver = AcadosOcpSolver(ocp, json_file = 'acados_ocp_' + model.name + '.json')
 acados_integrator_actual = AcadosSimSolver(
@@ -207,16 +172,10 @@ acados_integrator_actual = AcadosSimSolver(
 # %% [markdown]
 # ## Simulation results (nominal)
 
-# %%
-X_init_sim = np.zeros_like(X_init)
-X_init_sim[0, :] = x0
-for i in range(N):
-    acados_integrator_actual.set("x", X_init_sim[i, :])
-    acados_integrator_actual.set("u", U_init[i, :])
-    acados_integrator_actual.solve()
-    X_init_sim[i + 1, :] = acados_integrator_actual.get("x")
+# %% metadata={}
+X_init_sim = simulate_solution(acados_integrator_actual, x0, N, nx, nu, U_init)
 
-# %%
+# %% metadata={}
 lb_theta = -ocp_init.constraints.lh[0]
 fig, ax = base_plot(lb_theta=lb_theta)
 
@@ -235,7 +194,7 @@ add_plot_trajectory(ax, plot_data_nom_sim, prob_tighten=None, color_fun=plt.cm.B
 #
 # We generate training data (one-step ahead residuals `y_train` for starting point `x_train`) here by running robustified (cautious) solver without GP.
 
-# %%
+# %% metadata={}
 random_seed = 123
 N_sim_per_x0 = 1
 N_x0 = 10
@@ -254,12 +213,15 @@ y_train = generate_train_outputs_at_inputs(
     x_train, acados_integrator, acados_integrator_actual, Sigma_W
 )
 
+# %% metadata={}
+x_train
+
 # %% [markdown]
 # ## Hyper-parameter training for GP model
 #
 # Optimize hyper-parameters of GP model (kernel function parameters, ...)
 
-# %%
+# %% metadata={}
 x_train_tensor = torch.Tensor(x_train)
 y_train_tensor = torch.Tensor(y_train)
 nout = y_train.shape[1]
@@ -267,27 +229,48 @@ nout = y_train.shape[1]
 likelihood = gpytorch.likelihoods.MultitaskGaussianLikelihood(num_tasks=nout)
 gp_model = BatchIndependentMultitaskGPModel(x_train_tensor, y_train_tensor, likelihood)
 
-# %%
-training_iterations = 200
-rng_seed = 456
+# %% metadata={}
+load_gp_model_from_state_dict = False
+state_dict_path_gp_model = "gp_model_state_dict.pth"
+state_dict_path_likelihood = "gp_model_likelihood_state_dict.pth"
+train_data_path = "gp_model_train_data.pth"
 
-gp_model, likelihood = train_gp_model(
-    gp_model, torch_seed=rng_seed, training_iterations=training_iterations
-)
+if load_gp_model_from_state_dict:
+    # Load state dict
+    gp_model.load_state_dict(torch.load(state_dict_path_gp_model))
+    likelihood.load_state_dict(torch.load(state_dict_path_likelihood))
+else:
+    training_iterations = 200
+    rng_seed = 456
+
+    gp_model, likelihood = train_gp_model(
+        gp_model, torch_seed=rng_seed, training_iterations=training_iterations
+    )
 
 # EVAL MODE
 gp_model.eval()
 likelihood.eval()
+
+# %% metadata={}
+# save GP hyper-params
+torch.save(gp_model.state_dict(), state_dict_path_gp_model)
+torch.save(likelihood.state_dict(), state_dict_path_likelihood)
+torch.save({"x_train": x_train_tensor, "y_train": y_train_tensor}, train_data_path)
+
+
+# %% metadata={}
+data_dict = torch.load(train_data_path)
+data_dict
 
 # %% [markdown]
 # ## Plot GP predictions
 #
 # We plot GP predictions along the predicted trajectory of the robustified solver by projecting the multivariate plot down to a line.
 
-# %%
+# %% metadata={}
 x_train.shape, y_train.shape
 
-# %%
+# %% metadata={}
 num_samples = 5
 use_likelihood = False
 
@@ -311,7 +294,7 @@ plot_gp_data([gp_data], marker_size_lim=[1, 15])
 # %% [markdown]
 # We can also plot the derivative of the GP. Note that the projected Jacobian is not smooth since our path is not smooth either (jump projection direction = jump in Jacobian); however, the actual Jacobian should be smooth here (squared exponential kernel).
 
-# %%
+# %% metadata={}
 gp_derivative_data = gp_derivative_data_from_model_and_path(
     gp_model, likelihood, x_plot, num_samples=0
 )
@@ -320,7 +303,7 @@ plot_gp_data([gp_derivative_data], marker_size_lim=[5, 20], plot_train_data=Fals
 # %% [markdown]
 # Compare with plotting along a slice of the dimension. Since we generated training data along the path of the robustified controller, the GP looks pretty untrained along a slice of the coordinates.
 
-# %%
+# %% metadata={}
 # plot along axis
 x_dim_lims = np.array([[0, np.pi], [-2, 1], [-2, 2]])
 x_dim_slice = np.array([1 * np.pi, 0, 0])
@@ -338,7 +321,7 @@ y_lim_1 = ax[1].get_ylim()
 # %% [markdown]
 # Jacobian... not much going on away from the data points (this is good!)
 
-# %%
+# %% metadata={}
 gp_derivative_grid_data = gp_derivative_data_from_model_and_path(
     gp_model, likelihood, x_grid, num_samples=0
 )
@@ -353,24 +336,24 @@ plt.draw()
 # %% [markdown]
 # # Residual-Model MPC
 
-# %%
+# %% metadata={}
 from zero_order_gpmpc.models.gpytorch_models.gpytorch_residual_model import (
     GPyTorchResidualModel,
 )
 
-# %%
+# %% metadata={}
 residual_model = GPyTorchResidualModel(gp_model)
 
-# %%
+# %% metadata={}
 residual_model.evaluate(x_plot_waypts[0:3, :])
 
-# %%
+# %% metadata={}
 residual_model.jacobian(x_plot_waypts[0:3, :])
 
-# %%
+# %% metadata={}
 residual_model.value_and_jacobian(x_plot_waypts[0:3, :])
 
-# %%
+# %% metadata={}
 residual_mpc = ZeroOrderGPMPC(
     ocp_init,
     sim,
@@ -385,7 +368,7 @@ residual_mpc = ZeroOrderGPMPC(
     build_c_code=True,
 )
 
-# %%
+# %% metadata={}
 for i in range(N):
     residual_mpc.ocp_solver.set(i, "x", X_init[i, :])
     residual_mpc.ocp_solver.set(i, "u", U_init[i, :])
@@ -394,7 +377,7 @@ residual_mpc.ocp_solver.set(N, "x", X_init[N, :])
 residual_mpc.solve()
 X_res, U_res = residual_mpc.get_solution()
 
-# %%
+# %% metadata={}
 X_res_sim = np.zeros_like(X_res)
 X_res_sim[0, :] = x0
 for i in range(N):
@@ -403,7 +386,7 @@ for i in range(N):
     acados_integrator_actual.solve()
     X_res_sim[i + 1, :] = acados_integrator_actual.get("x")
 
-# %%
+# %% metadata={}
 lb_theta = -ocp_init.constraints.lh[0]
 fig, ax = base_plot(lb_theta=lb_theta)
 
@@ -422,13 +405,13 @@ add_plot_trajectory(ax, plot_data_res_sim, prob_tighten=None, color_fun=plt.cm.O
 # %% [markdown]
 # ### Custom Update version
 
-# %%
+# %% metadata={}
 # delete c_generated_code folder to avoid reusing old files by accident...
 import shutil
 
 shutil.rmtree("c_generated_code")
 
-# %%
+# %% metadata={}
 # # we use both-sided bounds again, specify which bound to be tightened using according index
 # ocp_cupdate = export_ocp_nominal(N,T,only_lower_bounds=False)
 # we use one-sided bounds since we just want to tighten upper bound
@@ -436,32 +419,20 @@ ocp_cupdate = export_ocp_nominal(
     N, T, only_lower_bounds=True, model_name="simplependulum_ode_cupdate"
 )
 
-# tighten constraints
-idh_tight = np.array([0])  # lower on theta (theta >= 0)
-
-# integrator for nominal model
-sim_cupdate = AcadosSim()
-
-sim_cupdate.model = ocp_cupdate.model
-sim_cupdate.parameter_values = ocp_cupdate.parameter_values
-for opt_name in dir(ocp_cupdate.solver_options):
-    if opt_name in dir(sim.solver_options) and re.search(r"__.*?__", opt_name) is None:
-        set_value = getattr(ocp_cupdate.solver_options, opt_name)
-        if opt_name == "sim_method_jac_reuse" and isinstance(set_value, list):
-            set_value = int(set_value[0])
-
-        print(f"Setting {opt_name} to {set_value}")
-        setattr(sim.solver_options, opt_name, set_value)
-
-# set prediction horizon
-sim_cupdate.solver_options.T = dT
+sim_cupdate = setup_sim_from_ocp(ocp_cupdate)
 
 # acados_ocp_solver = AcadosOcpSolver(ocp_cupdate, json_file = 'acados_ocp_' + model.name + '.json')
 acados_integrator_cupdate = AcadosSimSolver(
     sim_cupdate, json_file="acados_sim_" + sim_cupdate.model.name + "_cupdate.json"
 )
 
-# %%
+# %% metadata={}
+ocp_cupdate = export_ocp_nominal(N, T)
+
+# %% metadata={}
+# tighten constraints
+idh_tight = np.array([0])  # lower on theta (theta >= 0)
+
 zoro_solver_cupdate = ZoroAcadosCustomUpdate(
     ocp_cupdate,
     sim_cupdate,
@@ -481,23 +452,32 @@ for i in range(N):
 zoro_solver_cupdate.ocp_solver.set(N, "x", X_init[N, :])
 
 zoro_solver_cupdate.solve()
-X_cup, U_cup, P_cup = zoro_solver_cupdate.get_solution()
+X_cup, U_cup, P_cup_arr = zoro_solver_cupdate.get_solution()
+
+P_cup = []
+for i in range(N + 1):
+    P_cup.append(
+        np.array(
+            [
+                [P_cup_arr[3 * i], P_cup_arr[3 * i + 2]],
+                [P_cup_arr[3 * i + 2], P_cup_arr[3 * i + 1]],
+            ]
+        )
+    )
+
+# %% metadata={}
+P_cup
 
 # %% [markdown]
 # ### Custom update (with GP) vs. Residual GP -> the same!
 
-# %%
+# %% metadata={}
 fig, ax = base_plot(lb_theta=lb_theta)
 
 plot_data_gp_cupdate = EllipsoidTubeData2D(
     center_data=X_cup,
-    # ellipsoid_data = np.array(P_cup)
-    ellipsoid_data=None,
+    ellipsoid_data=np.array(P_cup),
+    # ellipsoid_data=None,
 )
 add_plot_trajectory(ax, plot_data_gp_cupdate, color_fun=plt.cm.Purples)
 add_plot_trajectory(ax, plot_data_res, color_fun=plt.cm.Reds)
-
-# %%
-zoro_solver_cupdate.print_solve_stats()
-
-# %%
