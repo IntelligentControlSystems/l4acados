@@ -122,7 +122,7 @@ def simulate_solution(sim_solver, x0, N, nx, nu, U):
 
 def init_ocp_solver(ocp_solver, X, U):
     # initialize with nominal solution
-    N = U.shape[0]
+    N = ocp_solver.acados_ocp.dims.N
     print(f"N = {N}, size_X = {X.shape}")
     for i in range(N):
         ocp_solver.set(i, "x", X[i, :])
