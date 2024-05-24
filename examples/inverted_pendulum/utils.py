@@ -74,12 +74,12 @@ def add_plot_trajectory(
 
 
 # OCP stuff
+def get_solution(ocp_solver, x0):
+    N = ocp_solver.acados_ocp.dims.N
 
-
-def get_solution(ocp_solver, x0, N, nx, nu):
     # get initial values
-    X = np.zeros((N + 1, nx))
-    U = np.zeros((N, nu))
+    X = np.zeros((N + 1, ocp_solver.acados_ocp.dims.nx))
+    U = np.zeros((N, ocp_solver.acados_ocp.dims.nu))
 
     # xcurrent = x0
     X[0, :] = x0

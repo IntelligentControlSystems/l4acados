@@ -99,7 +99,7 @@ def solve_pendulum(solver_name):
     acados_ocp_init_solver = AcadosOcpSolver(
         ocp_init, json_file="acados_ocp_" + ocp_init_model_name + ".json"
     )
-    X_init, U_init = get_solution(acados_ocp_init_solver, x0, N, nx, nu)
+    X_init, U_init = get_solution(acados_ocp_init_solver, x0)
 
     # actual sim
     sim_model_name = "simplependulum_ode_sim"
