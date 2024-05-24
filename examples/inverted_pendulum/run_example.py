@@ -194,7 +194,19 @@ def solve_pendulum(solver_name):
 
         zoro_solver.solve()
         X, U = zoro_solver.get_solution()
-        P = None
+        P_arr = zoro_solver.covariances_array
+
+        P = []
+        for i in range(N + 1):
+            P.append(
+                np.array(
+                    [
+                        [P_arr[3 * i], P_arr[3 * i + 2]],
+                        [P_arr[3 * i + 2], P_arr[3 * i + 1]],
+                    ]
+                )
+            )
+        P = np.array(P)
 
     elif solver_name == "zoro_acados_custom_update":
         zoro_solver = ZoroAcadosCustomUpdate(

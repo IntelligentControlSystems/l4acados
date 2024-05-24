@@ -73,4 +73,3 @@ add_plot_trajectory(ax, plot_data_zero_order_gpmpc, color_fun=plt.cm.Blues, line
 plt.title("All controllers should give the same result")
 
 plt.show()
-# -
