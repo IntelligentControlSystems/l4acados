@@ -13,6 +13,11 @@
 #     name: python3
 # ---
 
+# +
+import sys
+
+sys.path.append("../examples/inverted_pendulum")
+
 # + metadata={}
 # %load_ext autoreload
 # %autoreload 1
@@ -43,13 +48,15 @@ import matplotlib.pyplot as plt
 
 # + metadata={}
 X_zoro_acados, U_zoro_acados, P_zoro_acados = solve_pendulum("zoro_acados")
+# -
+
 X_zoro_cupdate, U_zoro_cupdate, P_zoro_cupdate = solve_pendulum(
     "zoro_acados_custom_update"
 )
+
 X_zero_order_gpmpc, U_zero_order_gpmpc, P_zero_order_gpmpc = solve_pendulum(
     "zero_order_gpmpc"
 )
-# -
 
 # ## Plot results
 

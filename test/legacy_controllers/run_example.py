@@ -2,6 +2,7 @@ import sys, os, shutil
 import argparse
 
 sys.path += ["../../external/"]
+sys.path += ["../../examples/inverted_pendulum/"]
 
 import numpy as np
 from scipy.stats import norm
@@ -19,13 +20,18 @@ import gpytorch
 import copy
 import re
 
+# legacy imports
+from zoro_acados import ZoroAcados
+from zoro_acados_custom_update import ZoroAcadosCustomUpdate
+
 # zoRO imports
 import zero_order_gpmpc
 from zero_order_gpmpc.controllers import (
-    ZoroAcados,
-    ZoroAcadosCustomUpdate,
     ZeroOrderGPMPC,
-    setup_sim_from_ocp,
+)
+from zero_order_gpmpc.controllers.zoro_acados_utils import setup_sim_from_ocp
+from zoro_acados_utils import (
+    tighten_model_constraints,
 )
 from inverted_pendulum_model_acados import (
     export_simplependulum_ode_model,
@@ -113,11 +119,6 @@ def solve_pendulum(solver_name):
     )
 
     if solver_name == "zoro_acados":
-        # modify OCP for backwards compatibility with zoro_acados
-        from zero_order_gpmpc.controllers.zoro_acados_utils import (
-            tighten_model_constraints,
-        )
-
         # tighten constraints
         idh_tight = np.array([0])  # lower constraint on theta (theta >= 0)
 
