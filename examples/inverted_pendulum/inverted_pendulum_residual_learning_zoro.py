@@ -481,3 +481,11 @@ plot_data_gp_cupdate = EllipsoidTubeData2D(
 )
 add_plot_trajectory(ax, plot_data_gp_cupdate, color_fun=plt.cm.Purples)
 add_plot_trajectory(ax, plot_data_res, color_fun=plt.cm.Reds)
+
+# %%
+zoro_solver_cupdate.print_solve_stats()
+
+import matplotlib.pyplot as plt
+
+plt.show()
+# %%

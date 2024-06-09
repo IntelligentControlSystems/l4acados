@@ -117,34 +117,10 @@ class ZeroOrderGPMPC(ResidualLearningMPC):
         self.solve_stats["timings_total"] = perf_counter() - time_total
 
     def setup_custom_update(self):
-        custom_update_source_dir = os.path.join(
-            os.path.dirname(os.path.realpath(__file__)), "custom_update_functions"
-        )
-        template_c_file = "custom_update_function_gpzoro_template.in.c"
-        template_h_file = "custom_update_function_gpzoro_template.in.h"
-        custom_c_file = "custom_update_function_gpzoro.c"
-        custom_h_file = "custom_update_function_gpzoro.h"
-
-        # copy custom update functions into acados
-        # Copy custom update functions into acados
-        # First find location where acados-template is installed.
-        pip_output = check_output(["pip", "show", "acados-template"]).decode().split()
-        path_to_acados_template = pip_output[pip_output.index("Editable") + 3]
-
-        # Then concat the full path to the template folder.
-        path_acados_custom_update = os.path.join(
-            path_to_acados_template,
-            "acados_template",
-            "custom_update_templates",
-        )
-        shutil.copy(
-            os.path.join(custom_update_source_dir, template_h_file),
-            path_acados_custom_update,
-        )
-        shutil.copy(
-            os.path.join(custom_update_source_dir, template_c_file),
-            path_acados_custom_update,
-        )
+        template_c_file = "custom_update_function_zoro_template.in.c"
+        template_h_file = "custom_update_function_zoro_template.in.h"
+        custom_c_file = "custom_update_function.c"
+        custom_h_file = "custom_update_function.h"
 
         # custom update: disturbance propagation
         self.ocp.solver_options.custom_update_filename = custom_c_file
@@ -175,6 +151,11 @@ class ZeroOrderGPMPC(ResidualLearningMPC):
         """G in (nx, nw) describes how noise affects dynamics. I.e. x+ = ... + G@w"""
         zoro_description.W_mat = self.Sigma_W
         """W in (nw, nw) describes the covariance of the noise on the system"""
+        zoro_description.input_P0_diag = True
+        zoro_description.input_P0 = False
+        zoro_description.input_W_diag = True
+        zoro_description.input_W_add_diag = True
+        zoro_description.output_P_matrices = True
 
         zoro_description.idx_lh_t = self.tighten_idx
         self.ocp.zoro_description = zoro_description
@@ -203,11 +184,13 @@ class ZeroOrderGPMPC(ResidualLearningMPC):
             )
         )
         covariances_in_len = covariances_in.size
-        out_arr = np.concatenate((covariances_in, -1.0 * np.ones(3 * (self.N + 1))))
+        out_arr = np.ascontiguousarray(
+            np.concatenate((covariances_in, -1.0 * np.ones(self.nx**2 * (self.N + 1))))
+        )
         self.ocp_solver.custom_update(out_arr)
         assert np.all(
             out_arr[:covariances_in_len] == covariances_in
         ), "do_custom_update: elements in the input covariances changed"
         self.covariances_array = out_arr[covariances_in_len:]
 
-        return
+        return 0
