@@ -22,7 +22,6 @@ sys.path += ["../../external/"]
 # %load_ext autoreload
 # %autoreload 1
 # %aimport zero_order_gpmpc
-# %aimport run_example
 
 # %% metadata={}
 import numpy as np
@@ -43,11 +42,9 @@ import copy
 # zoRO imports
 import zero_order_gpmpc
 from zero_order_gpmpc.controllers import (
-    ZoroAcados,
-    ZoroAcadosCustomUpdate,
     ZeroOrderGPMPC,
-    setup_sim_from_ocp,
 )
+from zero_order_gpmpc.controllers.zoro_acados_utils import setup_sim_from_ocp
 from inverted_pendulum_model_acados import (
     export_simplependulum_ode_model,
     export_ocp_nominal,
@@ -139,7 +136,7 @@ ocp_init.solver_options.Tsim
 # ## Open-loop planning with nominal solver
 
 # %% metadata={}
-X_init, U_init = get_solution(acados_ocp_init_solver, x0, N, nx, nu)
+X_init, U_init = get_solution(acados_ocp_init_solver, x0)
 
 # %% metadata={}
 # integrator for nominal model
@@ -159,7 +156,6 @@ acados_integrator = AcadosSimSolver(
 model_actual = export_simplependulum_ode_model(
     model_name=sim.model.name + "_actual", add_residual_dynamics=True
 )
-# model_actual = export_simplependulum_ode_model(model_name = sim.model.name + "_actual", add_residual_dynamics=False)
 
 sim_actual = setup_sim_from_ocp(ocp_init)
 sim_actual.model = model_actual
@@ -376,6 +372,20 @@ residual_mpc.ocp_solver.set(N, "x", X_init[N, :])
 
 residual_mpc.solve()
 X_res, U_res = residual_mpc.get_solution()
+P_res_arr = residual_mpc.covariances_array
+
+P_res = []
+for i in range(N + 1):
+    # P_res.append(P_res_arr[i * nx**2 : (i + 1) * nx**2].reshape((nx, nx)))
+    P_res.append(
+        np.array(
+            [
+                [P_res_arr[3 * i], P_res_arr[3 * i + 2]],
+                [P_res_arr[3 * i + 2], P_res_arr[3 * i + 1]],
+            ]
+        )
+    )
+P_res = np.array(P_res)
 
 # %% metadata={}
 X_res_sim = np.zeros_like(X_res)
@@ -390,102 +400,11 @@ for i in range(N):
 lb_theta = -ocp_init.constraints.lh[0]
 fig, ax = base_plot(lb_theta=lb_theta)
 
-plot_data_res = EllipsoidTubeData2D(center_data=X_res, ellipsoid_data=None)
+plot_data_res = EllipsoidTubeData2D(center_data=X_res, ellipsoid_data=P_res)
 plot_data_res_sim = EllipsoidTubeData2D(center_data=X_res_sim, ellipsoid_data=None)
-add_plot_trajectory(ax, plot_data_nom, prob_tighten=None, color_fun=plt.cm.Blues)
-add_plot_trajectory(ax, plot_data_nom_sim, prob_tighten=None, color_fun=plt.cm.Blues)
-add_plot_trajectory(ax, plot_data_res, prob_tighten=None, color_fun=plt.cm.Oranges)
-add_plot_trajectory(ax, plot_data_res_sim, prob_tighten=None, color_fun=plt.cm.Oranges)
-
-# %% [markdown]
-# # Zero-Order GP-MPC
-#
-# We can add the GP model to the solver by simply adding it as an argument to the `ZoroAcados` function. Therefore we copy (important!) the robustified controller and then instantiate another solver object.
-
-# %% [markdown]
-# ### Custom Update version
-
-# %% metadata={}
-# delete c_generated_code folder to avoid reusing old files by accident...
-import shutil
-
-shutil.rmtree("c_generated_code")
-
-# %% metadata={}
-# # we use both-sided bounds again, specify which bound to be tightened using according index
-# ocp_cupdate = export_ocp_nominal(N,T,only_lower_bounds=False)
-# we use one-sided bounds since we just want to tighten upper bound
-ocp_cupdate = export_ocp_nominal(
-    N, T, only_lower_bounds=True, model_name="simplependulum_ode_cupdate"
+add_plot_trajectory(ax, plot_data_nom, color_fun=plt.cm.Blues)
+add_plot_trajectory(ax, plot_data_nom_sim, color_fun=plt.cm.Blues)
+add_plot_trajectory(
+    ax, plot_data_res, prob_tighten=prob_tighten, color_fun=plt.cm.Oranges
 )
-
-sim_cupdate = setup_sim_from_ocp(ocp_cupdate)
-
-# acados_ocp_solver = AcadosOcpSolver(ocp_cupdate, json_file = 'acados_ocp_' + model.name + '.json')
-acados_integrator_cupdate = AcadosSimSolver(
-    sim_cupdate, json_file="acados_sim_" + sim_cupdate.model.name + "_cupdate.json"
-)
-
-# %% metadata={}
-ocp_cupdate = export_ocp_nominal(N, T)
-
-# %% metadata={}
-# tighten constraints
-idh_tight = np.array([0])  # lower on theta (theta >= 0)
-
-zoro_solver_cupdate = ZoroAcadosCustomUpdate(
-    ocp_cupdate,
-    sim_cupdate,
-    prob_x,
-    Sigma_x0,
-    Sigma_W,
-    h_tightening_idx=idh_tight,
-    gp_model=gp_model,
-    use_cython=False,
-    path_json_ocp="zoro_ocp_solver_config_cupdate.json",
-    path_json_sim="zoro_sim_solver_config_cupdate.json",
-)
-
-for i in range(N):
-    zoro_solver_cupdate.ocp_solver.set(i, "x", X_init[i, :])
-    zoro_solver_cupdate.ocp_solver.set(i, "u", U_init[i, :])
-zoro_solver_cupdate.ocp_solver.set(N, "x", X_init[N, :])
-
-zoro_solver_cupdate.solve()
-X_cup, U_cup, P_cup_arr = zoro_solver_cupdate.get_solution()
-
-P_cup = []
-for i in range(N + 1):
-    P_cup.append(
-        np.array(
-            [
-                [P_cup_arr[3 * i], P_cup_arr[3 * i + 2]],
-                [P_cup_arr[3 * i + 2], P_cup_arr[3 * i + 1]],
-            ]
-        )
-    )
-
-# %% metadata={}
-P_cup
-
-# %% [markdown]
-# ### Custom update (with GP) vs. Residual GP -> the same!
-
-# %% metadata={}
-fig, ax = base_plot(lb_theta=lb_theta)
-
-plot_data_gp_cupdate = EllipsoidTubeData2D(
-    center_data=X_cup,
-    ellipsoid_data=np.array(P_cup),
-    # ellipsoid_data=None,
-)
-add_plot_trajectory(ax, plot_data_gp_cupdate, color_fun=plt.cm.Purples)
-add_plot_trajectory(ax, plot_data_res, color_fun=plt.cm.Reds)
-
-# %%
-zoro_solver_cupdate.print_solve_stats()
-
-import matplotlib.pyplot as plt
-
-plt.show()
-# %%
+add_plot_trajectory(ax, plot_data_res_sim, color_fun=plt.cm.Oranges)

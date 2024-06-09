@@ -6,7 +6,7 @@ import torch
 import gpytorch
 
 from acados_template import AcadosOcp, AcadosSim, AcadosSimSolver, AcadosOcpSolver
-from .zoro_acados_utils import *
+from zoro_acados_utils import *
 
 from time import perf_counter
 from dataclasses import dataclass

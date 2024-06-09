@@ -1,8 +1,16 @@
+# Notebooks in test folder
+
+test/*/*.ipynb
+test/*.ipynb
+
 # Environment
 .envrc
 
 # General
 .DS_Store
+
+# Test
+test/legacy_controllers/*.json
 
 # Examples
 examples/inverted_pendulum/*.json
