@@ -22,6 +22,7 @@ from acados_template import (
     AcadosSimSolver,
     AcadosOcpSolver,
     AcadosOcpOptions,
+    ZoroDescription,
 )
 import matplotlib.pyplot as plt
 import torch
@@ -98,8 +99,10 @@ def solve_pendulum(solver_name):
     sigma_omega = (0.0001 / 360.0) * 2 * np.pi
     w_theta = 0.03
     w_omega = 0.03
-    Sigma_x0 = np.array([[sigma_theta**2, 0], [0, sigma_omega**2]])
-    Sigma_W = np.array([[w_theta**2, 0], [0, w_omega**2]])
+    Sigma_x0_diag = np.array([sigma_theta**2, sigma_omega**2])
+    Sigma_W_diag = np.array([w_theta**2, w_omega**2])
+    Sigma_x0 = np.diag(Sigma_x0_diag)
+    Sigma_W = np.diag(Sigma_W_diag)
 
     # GP training params
     random_seed = 123
@@ -186,13 +189,26 @@ def solve_pendulum(solver_name):
 
     # compare different solvers
     if solver_name == "zero_order_gpmpc":
+        # create zoro_description
+        zoro_description = ZoroDescription()
+        zoro_description.backoff_scaling_gamma = norm.ppf(prob_x)
+        zoro_description.P0_mat = Sigma_x0
+        zoro_description.fdbk_K_mat = np.zeros((nu, nx))
+        # zoro_description.unc_jac_G_mat = B
+        """G in (nx, nw) describes how noise affects dynamics. I.e. x+ = ... + G@w"""
+        zoro_description.W_mat = Sigma_W
+        """W in (nw, nw) describes the covariance of the noise on the system"""
+        zoro_description.input_P0_diag = True
+        zoro_description.input_P0 = False
+        zoro_description.input_W_diag = True
+        zoro_description.input_W_add_diag = True
+        zoro_description.output_P_matrices = True
+        zoro_description.idx_lh_t = [0]
+        ocp_init.zoro_description = zoro_description
+
         zoro_solver = ZeroOrderGPMPC(
             ocp_init,
             sim,
-            prob_x,
-            Sigma_x0,
-            Sigma_W,
-            h_tightening_idx=[0],
             gp_model=residual_model,
             use_cython=False,
             path_json_ocp=f"{solver_name}_ocp_solver_config.json",
