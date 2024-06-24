@@ -19,6 +19,8 @@ examples/inverted_pendulum/*.json
 c_generated_code/
 jit_tmp*.c
 tmp_casadi_compiler_shell*.o
+*sim*.json
+*ocp*.json
 
 
 # Byte-compiled / optimized / DLL files

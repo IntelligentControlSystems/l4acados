@@ -1,5 +1,4 @@
-image: registry.ethz.ch/ics-group/projects/andrea/crs-2.0:latest
-
+image: registry.ethz.ch/ics-group/projects/amon-lahr/zero-order-gp-mpc-package:latest
 stages:
   - format
   - test
@@ -13,6 +12,25 @@ run formatters: # Check whether code adheres to the required formats
   script:
     - pip3 install pre-commit && pre-commit install
     - pre-commit run -a
+  retry: 0
+  tags:
+    - deep-thought
+
+### =============================================================
+### ==============     TESTING STAGE    =========================
+### =============================================================
+run tests: # Run tests
+  stage: test
+  before_script:
+    # acados install
+    - cd $CI_PROJECT_DIR && git submodule update --recursive --init || exit 1
+    - mkdir -p $CI_PROJECT_DIR/external/acados/build && cd $CI_PROJECT_DIR/external/acados/build && cmake -DACADOS_PYTHON=ON .. && make install -j4 && export ACADOS_SOURCE_DIR=$CI_PROJECT_DIR/external/acados && export LD_LIBRARY_PATH=$ACADOS_SOURCE_DIR/lib || exit 1
+    - cd $CI_PROJECT_DIR && python3.9 -m pip install -r requirements.txt || exit 1
+    - cd $CI_PROJECT_DIR/external/acados/bin && wget https://github.com/acados/tera_renderer/releases/download/v0.0.34/t_renderer-v0.0.34-linux -O t_renderer && chmod +x t_renderer || exit 1
+    - cd $CI_PROJECT_DIR || exit 1
+  script:
+    - python3.9 -m pip install pytest
+    - python3.9 -m pytest --ignore external/
   retry: 0
   tags:
     - deep-thought

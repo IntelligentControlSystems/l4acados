@@ -1,0 +1,8 @@
+-e ./external/acados/interfaces/acados_template
+-e ./
+casadi==3.6.5
+matplotlib>=3.8.4
+numpy==1.26.4
+scipy==1.13.1
+setuptools==58.1.0
+torch>=2.3.0
