@@ -32,11 +32,11 @@ def export_simplependulum_ode_model(
         p = vertcat(*p)
 
     # dynamics
-    f_expl = vertcat(dtheta, sin(theta) + u)
+    f_expl = vertcat(dtheta, -sin(theta) + u)
     if noise:
         f_expl += w
     if add_residual_dynamics:
-        f_expl += vertcat(DM(0), 0.5 * sin(theta**2))
+        f_expl += vertcat(DM(0), -0.5 * sin(theta**2))
 
     f_impl = xdot - f_expl
 
