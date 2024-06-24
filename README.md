@@ -14,47 +14,43 @@ This software is built upon the results of the article "Zero-Order Optimization 
 
 ## Installation instructions
 
-1. Clone this repository.
-    ```bash
-        git clone https://github.com/lahramon/zero-order-gpmpc.git
-    ```
-
-2. Initialize submodules.
+1. `clone` this repository and initialize submodules with
     ```bash
         git submodule update --recursive --init
     ```
 
-3. Build the submodule `acados` according to the [installation instructions](https://docs.acados.org/installation/index.html).
+2. Build the submodule `acados` according to the [installation instructions](https://docs.acados.org/installation/index.html):
     ```bash
-        mkdir -p acados/build
-        cd acados/build
+        mkdir -p external/acados/build
+        cd external/acados/build
         cmake -DACADOS_PYTHON=ON .. # do not forget the ".."
         make install -j4
     ```
 
-4. Set up Python environment (Python version 3.9.13). In the following we use `pipenv`.
-    1. Change into main directory, then run
-        ```bash
-            pipenv install
-        ```
-    2. Export the variables `ACADOS_SOURCE_DIR` and `LD_LIBRARY_PATH` point towards the right locations in your `acados` installation:
-        ```bash
-            export ACADOS_SOURCE_DIR=<yourpath>/zero-order-gpmpc/acados
-            export LD_LIBRARY_PATH=<yourpath>/zero-order-gpmpc/acados/lib
-        ```
-        With `pipenv`, this can be done by defining a file called `.env` in the root directory, e.g., `<yourpath>/zero-order-gpmpc/.env`, which contains
-        ```bash
-            ACADOS_SOURCE_DIR=<yourpath>/zero-order-gpmpc/acados
-            LD_LIBRARY_PATH=<yourpath>/zero-order-gpmpc/acados/lib
-        ```
+3. Set environment variables (where `$PROJECT_DIR` is the directory you cloned the repository into in Step 1):
+    ```bash
+        export ACADOS_SOURCE_DIR=$PROJECT_DIR/external/acados
+        export LD_LIBRARY_PATH=$ACADOS_SOURCE_DIR/lib
+    ```
+
+4. Create virtual environment and install Python dependencies (Python version 3.9.13):
+    ```bash
+        pip install -r requirements.txt
+    ```
+
+5. Test your installation by executing the example script
+    ```bash
+        cd examples/inverted_pendulum
+        python inverted_pendulum_residual_learning_zoro.py
+    ```
 
 ## Examples
 
-You can find an example implementation of the zero-order GP-MPC method [here](https://github.com/lahramon/zero-order-gpmpc/blob/main/examples/inverted_pendulum/inverted_pendulum_zoro_acados.ipynb)
+You can find an example notebook of the zero-order GP-MPC method at `examples/inverted_pendulum/inverted_pendulum_zoro_acados.ipynb`.
 
 ## Citing us
 
-If you find this software useful, please consider citing our corresponding article as written below.
+If you use this software, please cite our corresponding article as written below.
 
 ```
 @article{lahr_zero-order_2023,
