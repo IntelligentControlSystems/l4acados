@@ -35,12 +35,8 @@ class ZeroOrderGPMPC(ResidualLearningMPC):
         self,
         ocp,
         sim,
-        prob_x,
-        Sigma_x0,
-        Sigma_W,
         B=None,
         gp_model=None,
-        h_tightening_idx=[],
         use_cython=True,
         path_json_ocp="zoro_ocp_solver_config.json",
         path_json_sim="zoro_sim_solver_config.json",
@@ -63,12 +59,6 @@ class ZeroOrderGPMPC(ResidualLearningMPC):
         self.covariances_array = np.zeros(200)
         """Propagated covariances along the horizon"""
 
-        self.prob_x = prob_x
-        self.Sigma_x0 = Sigma_x0
-        self.Sigma_x0_diag = np.diag(Sigma_x0)
-        self.Sigma_W = Sigma_W
-        self.Sigma_W_diag = np.diag(Sigma_W)
-        self.tighten_idx = h_tightening_idx
         self.setup_custom_update()
 
         self.build_c_code_done = False
@@ -142,23 +132,12 @@ class ZeroOrderGPMPC(ResidualLearningMPC):
         want to copy an existing custom_update.c/h into the export directory and to False if you want
         to render the custom_udpate files from the template"""
 
-        # zoro stuff
-        zoro_description = ZoroDescription()
-        zoro_description.backoff_scaling_gamma = norm.ppf(self.prob_x)
-        zoro_description.P0_mat = self.Sigma_x0
-        zoro_description.fdbk_K_mat = np.zeros((self.nu, self.nx))
-        zoro_description.unc_jac_G_mat = self.B
-        """G in (nx, nw) describes how noise affects dynamics. I.e. x+ = ... + G@w"""
-        zoro_description.W_mat = self.Sigma_W
-        """W in (nw, nw) describes the covariance of the noise on the system"""
-        zoro_description.input_P0_diag = True
-        zoro_description.input_P0 = False
-        zoro_description.input_W_diag = True
-        zoro_description.input_W_add_diag = True
-        zoro_description.output_P_matrices = True
+        if self.ocp.zoro_description.input_P0_diag:
+            self.zoro_input_P0 = np.diag(self.ocp.zoro_description.P0_mat)
+        else:
+            self.zoro_input_P0 = self.ocp.zoro_description.P0_mat
 
-        zoro_description.idx_lh_t = self.tighten_idx
-        self.ocp.zoro_description = zoro_description
+        self.zoro_input_W_diag = np.diag(self.ocp.zoro_description.W_mat)
 
     def do_custom_update(self) -> None:
         """performs the acados custom update and propagates the covariances for the constraint tightening
@@ -177,8 +156,8 @@ class ZeroOrderGPMPC(ResidualLearningMPC):
 
         covariances_in = np.concatenate(
             (
-                self.Sigma_x0_diag,
-                self.Sigma_W_diag,
+                self.zoro_input_P0,
+                self.zoro_input_W_diag,
                 # self.residual_model.current_variance is updated with value_and_jacobian() call in preparation phase
                 self.residual_model.current_variance.flatten(),
             )

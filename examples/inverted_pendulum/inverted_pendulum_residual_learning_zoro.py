@@ -33,6 +33,7 @@ from acados_template import (
     AcadosSimSolver,
     AcadosOcpSolver,
     AcadosOcpOptions,
+    ZoroDescription,
 )
 import matplotlib.pyplot as plt
 import torch
@@ -349,14 +350,28 @@ residual_model.jacobian(x_plot_waypts[0:3, :])
 # %% metadata={}
 residual_model.value_and_jacobian(x_plot_waypts[0:3, :])
 
+# %%
+# create zoro_description
+zoro_description = ZoroDescription()
+zoro_description.backoff_scaling_gamma = norm.ppf(prob_x)
+zoro_description.P0_mat = Sigma_x0
+zoro_description.fdbk_K_mat = np.zeros((nu, nx))
+# zoro_description.unc_jac_G_mat = B
+"""G in (nx, nw) describes how noise affects dynamics. I.e. x+ = ... + G@w"""
+zoro_description.W_mat = Sigma_W
+"""W in (nw, nw) describes the covariance of the noise on the system"""
+zoro_description.input_P0_diag = True
+zoro_description.input_P0 = False
+zoro_description.input_W_diag = True
+zoro_description.input_W_add_diag = True
+zoro_description.output_P_matrices = True
+zoro_description.idx_lh_t = [0]
+ocp_init.zoro_description = zoro_description
+
 # %% metadata={}
 residual_mpc = ZeroOrderGPMPC(
     ocp_init,
     sim,
-    prob_x,
-    Sigma_x0,
-    Sigma_W,
-    h_tightening_idx=[0],
     gp_model=residual_model,
     use_cython=False,
     path_json_ocp="residual_mpc_ocp_solver_config.json",
