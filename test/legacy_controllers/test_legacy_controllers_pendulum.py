@@ -1,82 +1,70 @@
-# ---
-# jupyter:
-#   jupytext:
-#     formats: ipynb,py
-#     text_representation:
-#       extension: .py
-#       format_name: light
-#       format_version: '1.5'
-#       jupytext_version: 1.16.1
-#   kernelspec:
-#     display_name: Python 3.9.13 ('zero-order-gp-mpc-code-2CX1fffa')
-#     language: python
-#     name: python3
-# ---
+import sys, os
+import numpy as np
 
-# +
-import sys
+sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
+sys.path.insert(
+    0,
+    os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "../../examples/inverted_pendulum")
+    ),
+)
 
-sys.path.append("../examples/inverted_pendulum")
-
-# + metadata={}
-# %load_ext autoreload
-# %autoreload 1
-# %aimport run_example
-
-# + metadata={}
 from run_example import solve_pendulum
 from utils import base_plot, EllipsoidTubeData2D, add_plot_trajectory
 import matplotlib.pyplot as plt
 
-# -
 
-# ## Inverted pendulum model
-#
-# We model the inverted pendulum
-#
-# $$
-# \dot{x} = f(x,u) = \begin{bmatrix} \dot{\theta} \\ \ddot{\theta} \end{bmatrix} = \begin{bmatrix} \dot{\theta} \\ -\sin(\theta) + u \end{bmatrix},
-# $$
-#
-# which is to be controlled from the hanging-down resting position, $(\theta_0, \dot{\theta}_0) = (\pi, 0)$, to the upright position ($(\theta_r, \dot{\theta}_r) = (0,0)$), subject to the constraints that overshoot should be avoided, i.e.,
-#
-# $$
-# \theta_{lb} \leq \theta \leq \theta_{ub}.
-# $$
-#
-# The model setup and controller definition can be found in the functions `export_simplependulum_ode_model()`, `export_ocp_nominal()` in the `inverted_pendulum_model_acados.py` file.
+def test_legacy_controllers_pendulum():
+    X = {}
+    U = {}
+    P = {}
 
-# + metadata={}
-X_zoro_acados, U_zoro_acados, P_zoro_acados = solve_pendulum("zoro_acados")
-# -
+    k_v1 = "zoro_acados"
+    k_cupdate = "zoro_acados_custom_update"
+    k_package = "zero_order_gpmpc"
+    k_list = [k_v1, k_cupdate, k_package]
 
-X_zoro_cupdate, U_zoro_cupdate, P_zoro_cupdate = solve_pendulum(
-    "zoro_acados_custom_update"
-)
+    X[k_v1], U[k_v1], P[k_v1] = solve_pendulum(k_v1)
+    X[k_cupdate], U[k_cupdate], P[k_cupdate] = solve_pendulum(k_cupdate)
+    X[k_package], U[k_package], P[k_package] = solve_pendulum(k_package)
 
-X_zero_order_gpmpc, U_zero_order_gpmpc, P_zero_order_gpmpc = solve_pendulum(
-    "zero_order_gpmpc"
-)
+    # ## Plot results
+    # lb_theta = 0.0
+    # fig, ax = base_plot(lb_theta=lb_theta)
 
-# ## Plot results
+    # plot_data_zoro_acados = EllipsoidTubeData2D(center_data=X[k_v1], ellipsoid_data=P[k_v1])
+    # plot_data_zoro_cupdate = EllipsoidTubeData2D(
+    #     center_data=X[k_cupdate], ellipsoid_data=P[k_cupdate]
+    # )
+    # plot_data_zero_order_gpmpc = EllipsoidTubeData2D(
+    #     center_data=X[k_package], ellipsoid_data=P[k_package]
+    # )
+    # add_plot_trajectory(ax, plot_data_zoro_acados, color_fun=plt.cm.Purples, linewidth=5)
+    # add_plot_trajectory(ax, plot_data_zoro_cupdate, color_fun=plt.cm.Oranges, linewidth=3)
+    # add_plot_trajectory(ax, plot_data_zero_order_gpmpc, color_fun=plt.cm.Blues, linewidth=1)
 
-# + metadata={}
-lb_theta = 0.0
-fig, ax = base_plot(lb_theta=lb_theta)
+    # plt.title("All controllers should give the same result")
 
-plot_data_zoro_acados = EllipsoidTubeData2D(
-    center_data=X_zoro_acados, ellipsoid_data=P_zoro_acados
-)
-plot_data_zoro_cupdate = EllipsoidTubeData2D(
-    center_data=X_zoro_cupdate, ellipsoid_data=P_zoro_cupdate
-)
-plot_data_zero_order_gpmpc = EllipsoidTubeData2D(
-    center_data=X_zero_order_gpmpc, ellipsoid_data=P_zero_order_gpmpc
-)
-add_plot_trajectory(ax, plot_data_zoro_acados, color_fun=plt.cm.Purples, linewidth=5)
-add_plot_trajectory(ax, plot_data_zoro_cupdate, color_fun=plt.cm.Oranges, linewidth=3)
-add_plot_trajectory(ax, plot_data_zero_order_gpmpc, color_fun=plt.cm.Blues, linewidth=1)
+    # plt.show()
 
-plt.title("All controllers should give the same result")
+    all_comparisons = [
+        (i, j) for i in range(len(k_list)) for j in range(i + 1, len(k_list))
+    ]
+    all_comparisons_atol = [1e-2, 1e-2, 1e-8]
 
-plt.show()
+    for dic in [X, U, P]:
+        for ij_index, ij_tup in enumerate(all_comparisons):
+            i, j = ij_tup
+            key = k_list[i]
+            key_comp = k_list[j]
+            # print(f"Comparing {key} and {key_comp}")
+            print(
+                f"Error in {key} and {key_comp}: {np.max(abs(dic[key]-dic[key_comp]))}"
+            )
+            assert np.allclose(
+                dic[key], dic[key_comp], atol=all_comparisons_atol[ij_index]
+            )
+
+
+if __name__ == "__main__":
+    test_legacy_controllers_pendulum()

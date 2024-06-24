@@ -1,8 +1,17 @@
 import sys, os, shutil
 import argparse
 
-sys.path += ["../../external/"]
-sys.path += ["../../examples/inverted_pendulum/"]
+sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
+sys.path.insert(
+    0,
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "../../external/")),
+)
+sys.path.insert(
+    0,
+    os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "../../examples/inverted_pendulum/")
+    ),
+)
 
 import numpy as np
 from scipy.stats import norm
