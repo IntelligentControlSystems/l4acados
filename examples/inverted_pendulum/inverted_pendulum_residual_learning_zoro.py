@@ -78,7 +78,7 @@ from zero_order_gpmpc.models.gpytorch_models.gpytorch_gp import (
 # \dot{x} = f(x,u) = \begin{bmatrix} \dot{\theta} \\ \ddot{\theta} \end{bmatrix} = \begin{bmatrix} \dot{\theta} \\ -\sin(\theta) + u \end{bmatrix},
 # $$
 #
-# which is to be controlled from the hanging-down resting position, $(\theta_0, \dot{\theta}_0) = (\pi, 0)$, to the upright position ($(\theta_r, \dot{\theta}_r) = (0,0)$), subject to the constraints that overshoot should be avoided, i.e.,
+# which is to be controlled from the hanging-down resting position, $(\theta_0, \dot{\theta}_0) = (\pi, 0)$, to the upright position $(\theta_r, \dot{\theta}_r) = (0,0)$, subject to the constraints that overshoot should be avoided, i.e.,
 #
 # $$
 # \theta_{lb} \leq \theta \leq \theta_{ub}.
@@ -103,15 +103,15 @@ nu = 1
 
 
 # %% metadata={}
-prob_x = 0.99
+prob_x = 0.95
 prob_tighten = norm.ppf(prob_x)
 
 # noise
 # uncertainty dynamics
 sigma_theta = (0.0001 / 360.0) * 2 * np.pi
 sigma_omega = (0.0001 / 360.0) * 2 * np.pi
-w_theta = 0.03
-w_omega = 0.03
+w_theta = 0.005
+w_omega = 0.005
 Sigma_x0 = np.array([[sigma_theta**2, 0], [0, sigma_omega**2]])
 Sigma_W = np.array([[w_theta**2, 0], [0, w_omega**2]])
 
