@@ -1,5 +1,5 @@
 import os
-from time import perf_counter
+from time import perf_counter, sleep
 from typing import Optional, Tuple
 
 import numpy as np
@@ -120,6 +120,9 @@ def test_unconditioned_gp(num_tests: int = 10) -> None:
     num_lines_x_data = count_lines(x_data_path)
     num_lines_y_data = count_lines(y_data_path)
 
+    # wait for threads to finish
+    sleep(5)
+
     assert num_lines_x_data == num_tests * 100
     assert num_lines_y_data == num_tests * 100
 
@@ -134,6 +137,8 @@ def generate_fake_data(
     residual_size: int,
     num_datapoints: Optional[int] = 800,
 ) -> None:
+    os.remove(filepath_x) if os.path.exists(filepath_x) else None
+    os.remove(filepath_y) if os.path.exists(filepath_y) else None
     x_data = np.random.rand(num_datapoints, state_size)
     y_data = np.random.rand(num_datapoints, residual_size)
     np.savetxt(filepath_x, x_data, delimiter=",")
@@ -305,6 +310,9 @@ def test_load_gp_from_file(num_tests: int = 10) -> None:
         f"gp eval times over {len(eval_times_ms)} "
         f"trials: {np.average(eval_times_ms):.4f} ms."
     )
+
+    # wait for threads to finish
+    sleep(5)
 
     os.remove(x_data_path)
     os.remove(y_data_path)

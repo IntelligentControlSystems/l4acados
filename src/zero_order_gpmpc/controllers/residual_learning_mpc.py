@@ -71,8 +71,10 @@ class ResidualLearningMPC:
         self.y_hat_all = np.zeros((self.N, self.nx + self.nu))
         self.residual_fun = np.zeros((self.N, self.nw))
         self.residual_jac = np.zeros((self.nw, self.N, self.nx + self.nu))
-        self.p_hat_nonlin = np.array([ocp.parameter_values for _ in range(self.N)])
-        self.p_hat_linmdl = np.array([self.ocp.parameter_values for _ in range(self.N)])
+        self.p_hat_nonlin = np.array([ocp.parameter_values for _ in range(self.N + 1)])
+        self.p_hat_linmdl = np.array(
+            [self.ocp.parameter_values for _ in range(self.N + 1)]
+        )
 
         self.has_residual_model = False
         if residual_model is not None:
@@ -172,6 +174,8 @@ class ResidualLearningMPC:
                 (self.x_hat_all[stage, :], self.u_hat_all[stage, :])
             ).reshape((1, self.nx + self.nu))
 
+        self.x_hat_all[self.N, :] = self.ocp_solver.get(self.N, "x")
+
         self.solve_stats["timings"]["query_nodes"][i] += (
             perf_counter() - time_query_nodes
         )
@@ -258,6 +262,12 @@ class ResidualLearningMPC:
             self.solve_stats["timings"]["set_sensitivities"][i] += (
                 perf_counter() - time_set_sensitivities
             )
+
+        # use stage N for linear part of last stage (unused anyway)
+        self.p_hat_linmdl[self.N, :] = np.hstack(
+            (A_reshape, B_reshape, f_hat, self.p_hat_nonlin[self.N, :])
+        )
+        self.ocp_solver.set(self.N, "p", self.p_hat_linmdl[self.N, :])
 
         # feedback rti_phase
         # ------------------- Phase 1 --------------------
