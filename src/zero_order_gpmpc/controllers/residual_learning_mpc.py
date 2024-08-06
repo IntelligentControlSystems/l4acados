@@ -330,7 +330,6 @@ class ResidualLearningMPC:
         )
 
     def init_solve_stats(self, max_iter):
-        print(f"initing {max_iter} solve stat fields")
         self.solve_stats = self.solve_stats_default.copy()
         for k in self.solve_stats["timings"].keys():
             self.solve_stats["timings"][k] = np.zeros((max_iter,))
@@ -354,28 +353,28 @@ class ResidualLearningMPC:
         # timings
         self.solve_stats_default = {
             "n_iter": 0,
-            "timings_total": 0.0,
+            "timings_total": np.array([0.0]),
             "timings": {
-                "build_lin_model": 0.0,
-                "query_nodes": 0.0,
-                "get_gp_sensitivities": 0.0,
-                "integrate_acados": 0.0,
-                "integrate_acados_python": 0.0,
-                "integrate_get": 0.0,
-                "integrate_set": 0.0,
-                "set_sensitivities": 0.0,
-                "set_sensitivities_reshape": 0.0,
-                "propagate_covar": 0.0,
-                "get_backoffs": 0.0,
-                "get_backoffs_htj_sig": 0.0,
-                "get_backoffs_htj_sig_matmul": 0.0,
-                "get_backoffs_add": 0.0,
-                "set_tightening": 0.0,
-                "phase_one": 0.0,
-                "check_termination": 0.0,
-                "solve_qp": 0.0,
-                "solve_qp_acados": 0.0,
-                "total": 0.0,
+                "build_lin_model": np.array([0.0]),
+                "query_nodes": np.array([0.0]),
+                "get_gp_sensitivities": np.array([0.0]),
+                "integrate_acados": np.array([0.0]),
+                "integrate_acados_python": np.array([0.0]),
+                "integrate_get": np.array([0.0]),
+                "integrate_set": np.array([0.0]),
+                "set_sensitivities": np.array([0.0]),
+                "set_sensitivities_reshape": np.array([0.0]),
+                "propagate_covar": np.array([0.0]),
+                "get_backoffs": np.array([0.0]),
+                "get_backoffs_htj_sig": np.array([0.0]),
+                "get_backoffs_htj_sig_matmul": np.array([0.0]),
+                "get_backoffs_add": np.array([0.0]),
+                "set_tightening": np.array([0.0]),
+                "phase_one": np.array([0.0]),
+                "check_termination": np.array([0.0]),
+                "solve_qp": np.array([0.0]),
+                "solve_qp_acados": np.array([0.0]),
+                "total": np.array([0.0]),
             },
         }
         self.solve_stats = self.solve_stats_default.copy()

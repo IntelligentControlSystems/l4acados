@@ -55,10 +55,6 @@ class ZeroOrderGPMPC(ResidualLearningMPC):
             build_c_code=False,
         )
 
-        # TODO(@naefjo): figure out proper length
-        self.covariances_array = np.zeros(200)
-        """Propagated covariances along the horizon"""
-
         self.setup_custom_update()
 
         self.build_c_code_done = False
@@ -154,6 +150,7 @@ class ZeroOrderGPMPC(ResidualLearningMPC):
         if not self.has_residual_model:
             return
 
+        time_before_custom_update = perf_counter()
         covariances_in = np.concatenate(
             (
                 self.zoro_input_P0,
@@ -167,9 +164,9 @@ class ZeroOrderGPMPC(ResidualLearningMPC):
             np.concatenate((covariances_in, -1.0 * np.ones(self.nx**2 * (self.N + 1))))
         )
         self.ocp_solver.custom_update(out_arr)
-        assert np.all(
-            out_arr[:covariances_in_len] == covariances_in
-        ), "do_custom_update: elements in the input covariances changed"
         self.covariances_array = out_arr[covariances_in_len:]
+        self.solve_stats["timings"]["propagate_covar"] += (
+            perf_counter() - time_before_custom_update
+        )
 
         return 0

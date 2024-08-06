@@ -399,10 +399,193 @@ def test_incorporate_new_data(num_tests: int = 10):
     )
 
 
+def train_gp_model(
+    gp_model, torch_seed=None, training_iterations=200, learning_rate=0.1
+):
+    if torch_seed is not None:
+        torch.manual_seed(torch_seed)
+
+    likelihood = gp_model.likelihood
+    train_x = gp_model.train_inputs[0]
+    train_y = gp_model.train_targets
+
+    # Find optimal model hyperparameters
+    gp_model.train()
+    likelihood.train()
+
+    # Use the adam optimizer
+    optimizer = torch.optim.Adam(
+        filter(lambda p: p.requires_grad, gp_model.parameters()), lr=learning_rate
+    )  # Includes GaussianLikelihood parameters
+
+    # "Loss" for GPs - the marginal log likelihood
+    mll = gpytorch.mlls.ExactMarginalLogLikelihood(likelihood, gp_model)
+
+    prev_loss = np.inf
+    num_loss_below_threshold = 0
+
+    for i in range(training_iterations):
+        optimizer.zero_grad()
+        output = likelihood(gp_model(train_x))
+        loss = -mll(output, train_y.reshape((train_y.numel(),)))
+        loss = loss.sum()
+
+        num_loss_below_threshold = (
+            num_loss_below_threshold + 1
+            if torch.any(torch.abs(loss - prev_loss)) < 5e-5
+            else 0
+        )
+
+        if num_loss_below_threshold > 5:
+            print(f"stopping GP optimization early after {i} iterations.")
+            break
+
+        prev_loss = loss
+
+        loss.backward()
+        if (i + 1) % 20 == 0:
+            print("Iter %d/%d - Loss: %.3f" % (i + 1, training_iterations, loss.item()))
+
+        optimizer.step()
+
+    gp_model.eval()
+    likelihood.eval()
+
+
+def test_inducing_point_gp_from_file(num_tests: int = 10) -> None:
+    """Test initialization of the GP from a file"""
+    add_data_times_ms = []
+    eval_times_ms = []
+    current_dir = os.getcwd()
+    x_data_path = os.path.join(current_dir, "tmp_x_data.txt")
+    y_data_path = os.path.join(current_dir, "tmp_y_data.txt")
+
+    for curr_test_num in range(num_tests):
+        print(f"\n\nPerforming run {curr_test_num}/{num_tests}")
+        # Test random input size and random jacobian
+        state_dimension = np.random.randint(1, 10)
+        residual_dimension = np.random.randint(1, 5)
+        input_feature_selection = np.random.randint(0, 2, size=(state_dimension))
+        input_feature_selection[0] = 1  # Make sure input dimension to GP is at least 1
+        input_dimension = np.sum(input_feature_selection)
+
+        if (curr_test_num % 2) == 0:
+            input_feature_selection = None
+            input_dimension = state_dimension
+
+        num_fake_datapoints = np.random.randint(100, 1000)
+
+        generate_fake_data(
+            x_data_path,
+            y_data_path,
+            state_dimension,
+            residual_dimension,
+            num_fake_datapoints,
+        )
+
+        max_num_datapoints = (
+            None
+            if np.random.randint(2) == 0
+            else np.random.randint(50, num_fake_datapoints)
+        )
+        print(
+            f"Setting max num datapoints to {max_num_datapoints} out of "
+            f"{num_fake_datapoints} datapoints."
+        )
+
+        num_iducing_points = 50
+
+        train_x_tensor, train_y_tensor = load_data(x_data_path, y_data_path)
+
+        # Generate a random permutation of indices
+        if np.random.randint(2):
+            print("Permuting dataset")
+            # Set manual seed for reproducibility
+            indices = torch.randperm(train_x_tensor.size(0))
+
+            train_x_tensor = train_x_tensor[indices]
+            train_y_tensor = train_y_tensor[indices]
+
+        if max_num_datapoints is not None:
+            train_x_tensor = train_x_tensor[:max_num_datapoints, :]
+            train_y_tensor = train_y_tensor[:max_num_datapoints, :]
+
+        print(
+            f"Loaded training data sucessfully with x and y shapes "
+            f"{train_x_tensor.shape} {train_y_tensor.shape}"
+        )
+
+        input_selection = FeatureSelector(input_feature_selection)
+
+        gpytorch_model = gpytorch_gp.BatchIndependentInducingPointGpModel(
+            input_selection(train_x_tensor),
+            train_y_tensor,
+            gpytorch.likelihoods.MultitaskGaussianLikelihood(
+                num_tasks=train_y_tensor.shape[1],
+                has_task_noise=True,
+                has_global_noise=False,
+            ),
+            num_iducing_points,
+            use_ard=False,
+        )
+
+        gpytorch_model.train()
+        gpytorch_model.likelihood.train()
+        train_gp_model(gpytorch_model)
+        gpytorch_model.eval()
+        gpytorch_model.likelihood.eval()
+
+        print(gpytorch_model.covar_module.inducing_points)
+        print(gpytorch_model.covar_module.base_kernel.outputscale)
+        print(gpytorch_model.covar_module.base_kernel.base_kernel.lengthscale)
+
+        gp = GPyTorchResidualLearningModel(
+            gp_model=gpytorch_model,
+            gp_feature_selector=input_selection,
+            data_processing_strategy=RecordDataStrategy(x_data_path, y_data_path),
+        )
+
+        for _ in range(100):
+            x_rand_data = np.random.rand(state_dimension)
+            y_rand_data = np.random.rand(residual_dimension)
+
+            time_before = perf_counter()
+            gp.record_datapoint(x_rand_data, y_rand_data)
+            add_data_times_ms.append((perf_counter() - time_before) * 1e3)
+
+            num_query_points = np.random.randint(1, 40)
+            x_rand_eval = torch.Tensor(
+                np.random.rand(num_query_points, state_dimension)
+            )
+
+            time_before = perf_counter()
+            val, jac = gp.value_and_jacobian(x_rand_eval)
+            assert val.shape == torch.Size([num_query_points, residual_dimension])
+            assert jac.shape == torch.Size(
+                [residual_dimension, num_query_points, state_dimension]
+            )
+            eval_times_ms.append((perf_counter() - time_before) * 1e3)
+
+    print(
+        f"data adding avg over {len(add_data_times_ms)} "
+        f"trials: {np.average(add_data_times_ms):.4f} ms."
+    )
+    print(
+        f"gp eval times over {len(eval_times_ms)} "
+        f"trials: {np.average(eval_times_ms):.4f} ms."
+    )
+
+    os.remove(x_data_path)
+    os.remove(y_data_path)
+
+
 if __name__ == "__main__":
     torch.random.manual_seed(42)
+    np.random.seed(42)
     test_unconditioned_gp()
     print(5 * "\n")
     test_load_gp_from_file()
     print(5 * "\n")
     test_incorporate_new_data()
+    print(5 * "\n")
+    test_inducing_point_gp_from_file()
