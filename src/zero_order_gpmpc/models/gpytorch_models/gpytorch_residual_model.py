@@ -24,6 +24,7 @@ class FeatureSelector:
     def __init__(
         self,
         input_selection: Optional[Union[np.ndarray, torch.Tensor]] = None,
+        device="cpu",
     ) -> torch.Tensor:
         if input_selection is None:
             self._input_selection_matrix = None
@@ -50,8 +51,8 @@ class FeatureSelector:
             raise ValueError("gp_input_jac has wrong number of dimensions")
 
         self._input_selection_matrix = torch.Tensor(
-            input_selection_matrix[~np.all(input_selection_matrix == 0, axis=1), :]
-        )
+            input_selection_matrix[~np.all(input_selection_matrix == 0, axis=1), :],
+        ).to(device=device)
 
     def __str__(self) -> str:
         return str(self._input_selection_matrix)
