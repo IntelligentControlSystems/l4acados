@@ -160,7 +160,16 @@ def setup_sim_from_ocp(ocp):
             print(f"Setting {opt_name} to {set_value}")
             setattr(sim.solver_options, opt_name, set_value)
 
-    sim.solver_options.T = ocp.solver_options.Tsim
+    if ocp.solver_options.Tsim is not None and ocp.solver_options.tf is not None:
+        assert np.isclose(
+            ocp.solver_options.tf / ocp.dims.N, ocp.solver_options.Tsim
+        ), "Both tf and Tsim are set in ocp, it should hold that (tf / N) == Tsim."
+
+    if ocp.solver_options.Tsim is not None:
+        sim.solver_options.T = ocp.solver_options.Tsim
+    else:
+        sim.solver_options.T = ocp.solver_options.tf / ocp.dims.N
+
     sim.solver_options.newton_iter = ocp.solver_options.sim_method_newton_iter
     sim.solver_options.newton_tol = ocp.solver_options.sim_method_newton_tol
     sim.solver_options.num_stages = array_to_int(
