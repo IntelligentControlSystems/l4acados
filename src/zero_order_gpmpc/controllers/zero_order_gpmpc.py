@@ -91,6 +91,7 @@ class ZeroOrderGPMPC(ResidualLearningMPC):
             self.zoro_input_P0 = self.ocp.zoro_description.P0_mat
 
         self.zoro_input_W_diag = np.diag(self.ocp.zoro_description.W_mat)
+        self.covariances_array = np.zeros(((self.N + 1) * self.nx**2,))
 
     def do_custom_update(self) -> None:
         """performs the acados custom update and propagates the covariances for the constraint tightening
@@ -120,6 +121,6 @@ class ZeroOrderGPMPC(ResidualLearningMPC):
             np.concatenate((covariances_in, -1.0 * np.ones(self.nx**2 * (self.N + 1))))
         )
         self.ocp_solver.custom_update(out_arr)
-        self.covariances_array = out_arr[covariances_in_len:]
+        self.covariances_array[:] = out_arr[covariances_in_len:]
 
         return 0
