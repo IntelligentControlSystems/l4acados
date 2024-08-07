@@ -65,13 +65,21 @@ timings_names_backoffs = [
 def export_linear_model(x, u, p):
     nx = x.shape[0]
     nu = u.shape[0]
-    nparam = p.shape[0] if isinstance(p, SX) else 0
+
+    if isinstance(x, MX):
+        VARX = MX
+    elif isinstance(x, SX):
+        VARX = SX
+    else:
+        raise ValueError("x must be of type SX or MX")
+
+    nparam = p.shape[0] if isinstance(p, VARX) else 0
 
     # linear dynamics for every stage
-    A = SX.sym("A", nx, nx)
-    B = SX.sym("B", nx, nu)
-    w = SX.sym("w", nx, 1)
-    xdot = SX.sym("xdot", nx, 1)
+    A = VARX.sym("A", nx, nx)
+    B = VARX.sym("B", nx, nu)
+    w = VARX.sym("w", nx, 1)
+    xdot = VARX.sym("xdot", nx, 1)
 
     f_expl = A @ x + B @ u + w
     f_impl = xdot - f_expl
