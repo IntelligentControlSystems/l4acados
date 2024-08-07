@@ -1,33 +1,7 @@
-import os, sys, shutil
-from subprocess import check_output
 import numpy as np
-import casadi as cas
-
-import torch
-import gpytorch
-
-from acados_template import (
-    AcadosOcp,
-    AcadosSim,
-    AcadosSimSolver,
-    AcadosOcpSolver,
-    ZoroDescription,
-)
 from .zoro_acados_utils import *
 from .residual_learning_mpc import ResidualLearningMPC
 from zero_order_gpmpc.models import ResidualModel
-
-from time import perf_counter
-from dataclasses import dataclass
-
-
-@dataclass
-class SolveData:
-    n_iter: int
-    sol_x: np.ndarray
-    sol_u: np.ndarray
-    timings_total: float
-    timings: dict
 
 
 class ZeroOrderGPMPC(ResidualLearningMPC):
@@ -36,7 +10,7 @@ class ZeroOrderGPMPC(ResidualLearningMPC):
         ocp,
         sim,
         B=None,
-        gp_model=None,
+        gp_model: ResidualModel = None,
         use_cython=True,
         path_json_ocp="zoro_ocp_solver_config.json",
         path_json_sim="zoro_sim_solver_config.json",
@@ -67,27 +41,15 @@ class ZeroOrderGPMPC(ResidualLearningMPC):
             )
 
     def solve(self):
-        time_total = perf_counter()
-        self.init_solve_stats(self.ocp_opts["nlp_solver_max_iter"])
-
         for i in range(self.ocp_opts["nlp_solver_max_iter"]):
-            time_iter = perf_counter()
-            status_prep = self.preparation(i)
+            self.preparation()
             status_cupd = self.do_custom_update()
-            status_feed = self.feedback(i)
+            status_feed = self.feedback()
 
             # ------------------- Check termination --------------------
             # check on residuals and terminate loop.
-            time_check_termination = perf_counter()
-
-            # self.ocp_solver.print_statistics() # encapsulates: stat = self.ocp_solver.get_stats("statistics")
             residuals = self.ocp_solver.get_residuals()
             print("residuals after ", i, "SQP_RTI iterations:\n", residuals)
-
-            self.solve_stats["timings"]["check_termination"][i] += (
-                perf_counter() - time_check_termination
-            )
-            self.solve_stats["timings"]["total"][i] += perf_counter() - time_iter
 
             if status_feed != 0:
                 raise Exception(
@@ -98,9 +60,6 @@ class ZeroOrderGPMPC(ResidualLearningMPC):
 
             if np.all(residuals < self.ocp_opts_tol_arr):
                 break
-
-        self.solve_stats["n_iter"] = i + 1
-        self.solve_stats["timings_total"] = perf_counter() - time_total
 
     def setup_custom_update(self):
         template_c_file = "custom_update_function_zoro_template.in.c"
@@ -150,7 +109,6 @@ class ZeroOrderGPMPC(ResidualLearningMPC):
         if not self.has_residual_model:
             return
 
-        time_before_custom_update = perf_counter()
         covariances_in = np.concatenate(
             (
                 self.zoro_input_P0,
@@ -165,8 +123,5 @@ class ZeroOrderGPMPC(ResidualLearningMPC):
         )
         self.ocp_solver.custom_update(out_arr)
         self.covariances_array = out_arr[covariances_in_len:]
-        self.solve_stats["timings"]["propagate_covar"] += (
-            perf_counter() - time_before_custom_update
-        )
 
         return 0

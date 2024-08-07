@@ -1,65 +1,8 @@
 from casadi import SX, MX, vertcat
 from acados_template import AcadosModel, AcadosSim
-import torch
-import gpytorch
-import casadi as cas
-import matplotlib.pyplot as plt
 import numpy as np
-from scipy.stats import norm
 from copy import deepcopy
 import re
-import copy
-
-timings_names_default = [
-    "build_lin_model",
-    "query_nodes",
-    "get_gp_sensitivities",
-    "integrate_acados",
-    "integrate_acados_python",
-    "integrate_get",
-    "integrate_set",
-    "set_sensitivities",
-    "set_sensitivities_reshape",
-    "propagate_covar",
-    "get_backoffs",
-    "get_backoffs_htj_sig",
-    "get_backoffs_htj_sig_matmul",
-    "get_backoffs_add",
-    "set_tightening",
-    "phase_one",
-    "check_termination",
-    "solve_qp",
-    "solve_qp_acados",
-    # "total",
-]
-
-timings_names_raw = [
-    "build_lin_model",
-    "query_nodes",
-    "get_gp_sensitivities",
-    "integrate_acados",
-    # "integrate_acados_python",
-    "integrate_get",
-    "integrate_set",
-    "set_sensitivities",
-    "set_sensitivities_reshape",
-    "propagate_covar",
-    # "get_backoffs",
-    "get_backoffs_htj_sig",
-    "get_backoffs_htj_sig_matmul",
-    "get_backoffs_add",
-    "set_tightening",
-    "phase_one",
-    "check_termination",
-    # "solve_qp",
-    "solve_qp_acados",
-]
-
-timings_names_backoffs = [
-    "get_backoffs_htj_sig",
-    "get_backoffs_htj_sig_matmul",
-    "get_backoffs_add",
-]
 
 
 def export_linear_model(x, u, p):
@@ -101,17 +44,6 @@ def export_linear_model(x, u, p):
     model.name = f"linear_model_with_params_nx{nx}_nu{nu}_np{nparam}"
 
     return model
-
-
-def get_total_timings(solve_data: list, timings_names=timings_names_default):
-    timings = []
-    for s in solve_data:
-        t_total = 0.0
-        for t_key, t_arr in s.timings.items():
-            if any([t_key == key for key in timings_names]):
-                t_total += np.sum(t_arr)
-        timings += [t_total]
-    return np.array(timings)
 
 
 def transform_ocp(ocp_input):
@@ -201,7 +133,7 @@ def get_solve_opts_from_ocp(ocp):
 
 
 def array_to_int(arr):
-    value = copy.deepcopy(arr)
+    value = deepcopy(arr)
     if type(value) is list or type(value) is np.ndarray:
         assert all(value == value[0])
         value = value[0]
