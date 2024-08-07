@@ -202,7 +202,6 @@ def solve_pendulum(solver_name):
 
         zoro_solver = ZeroOrderGPMPC(
             ocp_init,
-            sim,
             gp_model=residual_model,
             use_cython=False,
             path_json_ocp=f"{solver_name}_ocp_solver_config.json",
