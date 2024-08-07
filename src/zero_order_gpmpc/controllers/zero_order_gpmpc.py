@@ -8,7 +8,6 @@ class ZeroOrderGPMPC(ResidualLearningMPC):
     def __init__(
         self,
         ocp,
-        sim,
         B=None,
         gp_model: ResidualModel = None,
         use_cython=True,
@@ -20,7 +19,6 @@ class ZeroOrderGPMPC(ResidualLearningMPC):
         # the custom update.
         super().__init__(
             ocp,
-            sim,
             B=B,
             residual_model=gp_model,
             use_cython=use_cython,

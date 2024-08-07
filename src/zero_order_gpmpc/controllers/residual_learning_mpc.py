@@ -1,7 +1,11 @@
 import numpy as np
 
 from acados_template import AcadosOcp, AcadosSim, AcadosSimSolver, AcadosOcpSolver
-from .zoro_acados_utils import transform_ocp, get_solve_opts_from_ocp
+from .zoro_acados_utils import (
+    transform_ocp,
+    setup_sim_from_ocp,
+    get_solve_opts_from_ocp,
+)
 from zero_order_gpmpc.models import ResidualModel
 
 
@@ -9,7 +13,6 @@ class ResidualLearningMPC:
     def __init__(
         self,
         ocp: AcadosOcp,
-        sim: AcadosSim,
         B: np.ndarray = None,
         residual_model: ResidualModel = None,
         build_c_code=True,
@@ -38,7 +41,7 @@ class ResidualLearningMPC:
 
         # transform OCP to linear-params-model
         self.B = B
-        self.sim = sim
+        self.sim = setup_sim_from_ocp(ocp)
         self.ocp = transform_ocp(ocp)
         self.ocp_opts = get_solve_opts_from_ocp(ocp)
         self.ocp_opts_tol_arr = np.array(
