@@ -237,7 +237,7 @@ def solve_pendulum(solver_name):
 
         init_ocp_solver(zoro_solver.ocp_solver, X_init, U_init)
 
-        zoro_solver.solve()
+        zoro_solver.solve(tol_nlp=1e-6, n_iter_max=30)
         X, U, P_arr = zoro_solver.get_solution()
 
         P = []
@@ -268,7 +268,7 @@ def solve_pendulum(solver_name):
 
         init_ocp_solver(zoro_solver.ocp_solver, X_init, U_init)
 
-        zoro_solver.solve()
+        zoro_solver.solve(tol_nlp=1e-6, n_iter_max=30)
         X, U, P = zoro_solver.get_solution()
         P = np.array(P)
 

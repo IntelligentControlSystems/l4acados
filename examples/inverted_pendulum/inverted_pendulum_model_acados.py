@@ -58,7 +58,7 @@ def export_simplependulum_ode_model(
     # model.z = z
     model.p = p
     model.con_h_expr = con_h_expr
-    # model.con_h_expr_e = con_h_expr
+    model.con_h_expr_e = con_h_expr
     model.name = model_name
 
     return model
@@ -133,10 +133,9 @@ def export_ocp_nominal(N, T, ocp_opts=None, only_lower_bounds=False, **model_kwa
         ocp.constraints.lh = np.array([lb_theta])
         ocp.constraints.uh = np.array([ub_theta])
 
-    # ocp.constraints.lh_e = ocp.constraints.lh
-    # ocp.constraints.uh_e = ocp.constraints.uh
-
     # terminal constraints
+    ocp.constraints.lh_e = ocp.constraints.lh
+    ocp.constraints.uh_e = ocp.constraints.uh
     ocp.constraints.C_e = ocp.constraints.C
     ocp.constraints.lg_e = ocp.constraints.lg
     ocp.constraints.ug_e = ocp.constraints.ug
@@ -159,5 +158,7 @@ def export_ocp_nominal(N, T, ocp_opts=None, only_lower_bounds=False, **model_kwa
 
     ocp.solver_options.tf = T
     ocp.solver_options.Tsim = T / N
+
+    ocp.solver_options.tol = 1e-5
 
     return ocp

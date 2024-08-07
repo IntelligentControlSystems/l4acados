@@ -171,6 +171,26 @@ def setup_sim_from_ocp(ocp):
     return sim
 
 
+def get_solve_opts_from_ocp(ocp):
+    solve_opts = {}
+    for opt_name in dir(ocp.solver_options):
+        if re.search(r"__.*?__", opt_name) is not None:
+            continue
+        if re.search(r"_AcadosOcpOptions__.*?", opt_name) is not None:
+            continue
+
+        try:
+            set_value = getattr(ocp.solver_options, opt_name)
+        except Exception as e:
+            print(f"Error getting attribute: {e}")
+            set_value = None
+
+        print(f"Getting: {opt_name} = {set_value}")
+        solve_opts[opt_name] = set_value
+
+    return solve_opts
+
+
 def array_to_int(arr):
     value = copy.deepcopy(arr)
     if type(value) is list or type(value) is np.ndarray:

@@ -66,11 +66,11 @@ class ZeroOrderGPMPC(ResidualLearningMPC):
                 path_json_sim=path_json_sim,
             )
 
-    def solve(self, tol_nlp=1e-6, n_iter_max=30):
+    def solve(self):
         time_total = perf_counter()
-        self.init_solve_stats(n_iter_max)
+        self.init_solve_stats(self.ocp_opts["nlp_solver_max_iter"])
 
-        for i in range(n_iter_max):
+        for i in range(self.ocp_opts["nlp_solver_max_iter"]):
             time_iter = perf_counter()
             status_prep = self.preparation(i)
             status_cupd = self.do_custom_update()
@@ -96,7 +96,7 @@ class ZeroOrderGPMPC(ResidualLearningMPC):
                     )
                 )
 
-            if max(residuals) < tol_nlp:
+            if np.all(residuals < self.ocp_opts_tol_arr):
                 break
 
         self.solve_stats["n_iter"] = i + 1

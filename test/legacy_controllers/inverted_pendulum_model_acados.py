@@ -160,4 +160,7 @@ def export_ocp_nominal(N, T, ocp_opts=None, only_lower_bounds=False, **model_kwa
     ocp.solver_options.tf = T
     ocp.solver_options.Tsim = T / N
 
+    ocp.solver_options.tol = 1e-6
+    ocp.solver_options.nlp_solver_max_iter = 30
+
     return ocp
