@@ -5,7 +5,7 @@ import torch
 import gpytorch
 
 from acados_template import AcadosOcp, AcadosSim, AcadosSimSolver, AcadosOcpSolver
-from .zoro_acados_utils import *
+from .zoro_acados_utils import transform_ocp, get_solve_opts_from_ocp
 from zero_order_gpmpc.models import ResidualModel
 
 from time import perf_counter
@@ -56,6 +56,15 @@ class ResidualLearningMPC:
         self.B = B
         self.sim = sim
         self.ocp = transform_ocp(ocp)
+        self.ocp_opts = get_solve_opts_from_ocp(ocp)
+        self.ocp_opts_tol_arr = np.array(
+            [
+                self.ocp_opts["nlp_solver_tol_stat"],
+                self.ocp_opts["nlp_solver_tol_eq"],
+                self.ocp_opts["nlp_solver_tol_ineq"],
+                self.ocp_opts["nlp_solver_tol_comp"],
+            ]
+        )
 
         # get dimensions
         self.nx = self.ocp.dims.nx
@@ -122,11 +131,11 @@ class ResidualLearningMPC:
 
         self.build_c_code_done = True
 
-    def solve(self, tol_nlp=1e-6, n_iter_max=30):
+    def solve(self):
         time_total = perf_counter()
-        self.init_solve_stats(n_iter_max)
+        self.init_solve_stats(self.ocp_opts["nlp_solver_max_iter"])
 
-        for i in range(n_iter_max):
+        for i in range(self.ocp_opts["nlp_solver_max_iter"]):
             time_iter = perf_counter()
             status_prep = self.preparation(i)
             status_feed = self.feedback(i)
@@ -151,7 +160,7 @@ class ResidualLearningMPC:
                     )
                 )
 
-            if max(residuals) < tol_nlp:
+            if np.all(residuals < self.ocp_opts_tol_arr):
                 break
 
         self.solve_stats["n_iter"] = i + 1

@@ -366,6 +366,7 @@ zoro_description.input_W_diag = True
 zoro_description.input_W_add_diag = True
 zoro_description.output_P_matrices = True
 zoro_description.idx_lh_t = [0]
+zoro_description.idx_lh_e_t = [0]
 ocp_init.zoro_description = zoro_description
 
 # %% metadata={}
@@ -391,15 +392,7 @@ P_res_arr = residual_mpc.covariances_array
 
 P_res = []
 for i in range(N + 1):
-    # P_res.append(P_res_arr[i * nx**2 : (i + 1) * nx**2].reshape((nx, nx)))
-    P_res.append(
-        np.array(
-            [
-                [P_res_arr[3 * i], P_res_arr[3 * i + 2]],
-                [P_res_arr[3 * i + 2], P_res_arr[3 * i + 1]],
-            ]
-        )
-    )
+    P_res.append(P_res_arr[i * nx**2 : (i + 1) * nx**2].reshape((nx, nx)))
 P_res = np.array(P_res)
 
 # %% metadata={}
