@@ -108,6 +108,7 @@ def setup_sim_from_ocp(ocp):
         ocp.solver_options.sim_method_num_stages
     )
     sim.solver_options.num_steps = array_to_int(ocp.solver_options.sim_method_num_steps)
+    sim.code_export_directory = ocp.code_export_directory
 
     return sim
 
