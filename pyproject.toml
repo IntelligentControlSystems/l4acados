@@ -16,6 +16,9 @@ classifiers = [
 dependencies = [
     "linear_operator @ git+https://github.com/naefjo/linear_operator@feature/exo-gp",
     "gpytorch @ git+https://github.com/naefjo/gpytorch@feature/exo-gp",
+    "casadi",
+    "scipy",
+    "numpy",
 ]
 
 [build-system]
