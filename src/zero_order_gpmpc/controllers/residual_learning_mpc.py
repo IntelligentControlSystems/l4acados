@@ -15,11 +15,11 @@ class ResidualLearningMPC:
         ocp: AcadosOcp,
         B: np.ndarray = None,
         residual_model: ResidualModel = None,
-        build_c_code=True,
-        use_cython=True,
-        path_json_ocp="zoro_ocp_solver_config.json",
-        path_json_sim="zoro_sim_solver_config.json",
-    ):
+        build_c_code: bool = True,
+        use_cython: bool = True,
+        path_json_ocp: str = "zoro_ocp_solver_config.json",
+        path_json_sim: str = "zoro_sim_solver_config.json",
+    ) -> None:
         """
         ocp: AcadosOcp for nominal problem
         sim: AcadosSim for nominal model
@@ -92,7 +92,7 @@ class ResidualLearningMPC:
         build_c_code=True,
         path_json_ocp="residual_lbmpc_ocp_solver_config.json",
         path_json_sim="residual_lbmpc_sim_solver_config.json",
-    ):
+    ) -> None:
         """
         build_c_code: Whether the solver should be built. If set to false, the solver
             will simply be read from the json files.
@@ -211,7 +211,7 @@ class ResidualLearningMPC:
         status = self.ocp_solver.solve()
         return status
 
-    def get_solution(self):
+    def get_solution(self) -> tuple[np.ndarray, np.ndarray]:
         X = np.zeros((self.N + 1, self.nx))
         U = np.zeros((self.N, self.nu))
 

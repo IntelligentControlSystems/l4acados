@@ -7,6 +7,7 @@ import torch
 import gpytorch
 
 from .gpytorch_residual_model import GPyTorchResidualModel, FeatureSelector
+from .gpytorch_utils import to_numpy, to_tensor
 
 
 # Forward declaration
@@ -25,10 +26,12 @@ class DataProcessingStrategy(ABC):
 
     def process(
         self,
-        residual_gp_instance: ResidualGaussianProcess,
+        gp_model: gpytorch.models.ExactGP,
         x_input: np.array,
         y_target: np.array,
-    ):
+        gp_feature_selector: FeatureSelector,
+        timestamp: Optional[float],
+    ) -> Optional[gpytorch.models.ExactGP]:
         """Function which is processed in the `record_datapoint` method of `ResidualGaussianProcess`
 
         Args:
@@ -44,10 +47,12 @@ class DataProcessingStrategy(ABC):
 class VoidDataStrategy(DataProcessingStrategy):
     def process(
         self,
-        residual_gp_instance: ResidualGaussianProcess,
+        gp_model: gpytorch.models.ExactGP,
         x_input: np.array,
         y_target: np.array,
-    ):
+        gp_feature_selector: FeatureSelector,
+        timestamp: Optional[float],
+    ) -> Optional[gpytorch.models.ExactGP]:
         pass
 
 
@@ -71,10 +76,12 @@ class RecordDataStrategy(DataProcessingStrategy):
 
     def process(
         self,
-        residual_gp_instance: ResidualGaussianProcess,
+        gp_model: gpytorch.models.ExactGP,
         x_input: np.array,
         y_target: np.array,
-    ):
+        gp_feature_selector: FeatureSelector,
+        timestamp: Optional[float],
+    ) -> Optional[gpytorch.models.ExactGP]:
         self._gp_training_data["x_training_data"].append(x_input)
         self._gp_training_data["y_training_data"].append(y_target)
 
@@ -112,63 +119,74 @@ class OnlineLearningStrategy(DataProcessingStrategy):
     The received data is incorporated in the GP and used for further predictions.
     """
 
-    def __init__(self, max_num_points=200) -> None:
+    def __init__(self, max_num_points: int = 200, device: str = "cpu") -> None:
         self.max_num_points = max_num_points
+        self.device = device
 
     def process(
         self,
-        residual_gp_instance: ResidualGaussianProcess,
+        gp_model: gpytorch.models.ExactGP,
         x_input: np.array,
         y_target: np.array,
-    ):
-        if not torch.is_tensor(x_input):
-            x_input = residual_gp_instance.to_tensor(x_input)
+        gp_feature_selector: FeatureSelector,
+        timestamp: Optional[float],
+    ) -> Optional[gpytorch.models.ExactGP]:
 
-        x_input = torch.atleast_2d(x_input)
+        # Convert to tensor
+        if not torch.is_tensor(x_input):
+            x_input = to_tensor(arr=x_input, device=self.device)
 
         if not torch.is_tensor(y_target):
-            y_target = residual_gp_instance.to_tensor(y_target)
+            y_target = to_tensor(arr=y_target, device=self.device)
 
+        # Extend to 2D for further computation
+        x_input = torch.atleast_2d(x_input)
         y_target = torch.atleast_2d(y_target)
-        # if prediction strategy is empty (i.e. we were using an empty GP), we need to use
-        # the set_train_data method.
+
         if (
-            residual_gp_instance.gp_model.prediction_strategy is None
-            or residual_gp_instance.gp_model.train_inputs is None
-            or residual_gp_instance.gp_model.train_targets is None
+            gp_model.prediction_strategy is None
+            or gp_model.train_inputs is None
+            or gp_model.train_targets is None
         ):
-            if residual_gp_instance.gp_model.train_inputs is not None:
+            if gp_model.train_inputs is not None:
                 raise RuntimeError(
                     "train_inputs in GP is not None. Something went wrong."
                 )
 
-            residual_gp_instance.gp_model.set_train_data(
-                residual_gp_instance._gp_feature_selector(x_input),
+            # Set the training data and return (in-place modification)
+            gp_model.set_train_data(
+                gp_feature_selector(x_input),
                 y_target,
                 strict=False,
             )
             return
 
-        if (
-            residual_gp_instance.gp_model.train_inputs[0].shape[-2]
-            >= self.max_num_points
-        ):
-            selector = torch.ones(self.max_num_points)
-            # TODO(@naefjo): Add super cool logic to determine which points to kick out. Ideally with O(-n^3)
-            drop_idx = torch.randint(0, self.max_num_points, torch.Size()).item()
-            selector[drop_idx] = 0
-            residual_gp_instance.gp_model = (
-                residual_gp_instance.gp_model.get_fantasy_model(
-                    residual_gp_instance._gp_feature_selector(x_input),
+        # Check if GP is already full
+        if gp_model.train_inputs[0].shape[-2] >= self.max_num_points:
+            with torch.no_grad():
+                selector = torch.ones(self.max_num_points, requires_grad=False)
+                # TODO(@naefjo): Add super cool logic to determine which points to kick out. Ideally with O(-n^3)
+                drop_idx = torch.randint(
+                    0, self.max_num_points, torch.Size(), requires_grad=False
+                ).item()
+                selector[drop_idx] = 0
+
+                # Calculate fantasy model with data selector
+                fantasy_model = gp_model.get_fantasy_model(
+                    gp_feature_selector(x_input),
                     y_target,
                     data_selector=selector,
                 )
-            )
-            return
 
-        residual_gp_instance.gp_model = residual_gp_instance.gp_model.get_fantasy_model(
-            residual_gp_instance._gp_feature_selector(x_input), y_target
-        )
+                return fantasy_model
+
+        with torch.no_grad():
+            # Add observation and return updated model
+            fantasy_model = gp_model.get_fantasy_model(
+                gp_feature_selector(x_input), y_target
+            )
+
+            return fantasy_model
 
 
 class GPyTorchResidualLearningModel(GPyTorchResidualModel):
@@ -210,11 +228,24 @@ class GPyTorchResidualLearningModel(GPyTorchResidualModel):
             except TypeError:
                 pass
 
-    def record_datapoint(self, x_input: np.array, y_target: np.array) -> None:
+    def record_datapoint(
+        self, x_input: np.array, y_target: np.array, timestamp: Optional[float] = None
+    ) -> None:
         """Record one datapoint to the training dataset.
 
         Args:
             - x_input: (N, state_dim) input features
             - y_target: (N, residual_dim) array of size nw with the targets we want to predict.
         """
-        self._data_processing_strategy.process(self, x_input, y_target)
+
+        # Process datapoint and update model if needed
+        if (
+            updated_gp_model := self._data_processing_strategy.process(
+                gp_model=self.gp_model,
+                x_input=x_input,
+                y_target=y_target,
+                gp_feature_selector=self._gp_feature_selector,
+                timestamp=timestamp,
+            )
+        ) is not None:
+            self.gp_model = updated_gp_model
