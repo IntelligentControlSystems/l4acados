@@ -2,25 +2,26 @@ import numpy as np
 from .zoro_acados_utils import *
 from .residual_learning_mpc import ResidualLearningMPC
 from zero_order_gpmpc.models import ResidualModel
+from acados_template import AcadosOcp
 
 
 class ZeroOrderGPMPC(ResidualLearningMPC):
     def __init__(
         self,
-        ocp,
-        B=None,
-        gp_model: ResidualModel = None,
-        use_cython=True,
-        path_json_ocp="zoro_ocp_solver_config.json",
-        path_json_sim="zoro_sim_solver_config.json",
-        build_c_code=True,
-    ):
+        ocp: AcadosOcp,
+        B: np.ndarray = None,
+        residual_model: ResidualModel = None,
+        use_cython: bool = True,
+        path_json_ocp: str = "zoro_ocp_solver_config.json",
+        path_json_sim: str = "zoro_sim_solver_config.json",
+        build_c_code: bool = True,
+    ) -> None:
         # Set up all member variables but don't build the code yet. We still need to setup
         # the custom update.
         super().__init__(
             ocp,
             B=B,
-            residual_model=gp_model,
+            residual_model=residual_model,
             use_cython=use_cython,
             path_json_ocp=path_json_ocp,
             path_json_sim=path_json_sim,
