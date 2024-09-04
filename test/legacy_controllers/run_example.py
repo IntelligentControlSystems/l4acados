@@ -217,7 +217,7 @@ def solve_pendulum(solver_name):
 
         P = []
         for i in range(N + 1):
-            P.append(P_arr[4 * i : 4 * i + 4].reshape((2, 2)))
+            P.append(P_arr[nx**2 * i : nx**2 * (i + 1)].reshape((nx, nx)))
         P = np.array(P)
 
     elif solver_name == "zoro_acados_custom_update":

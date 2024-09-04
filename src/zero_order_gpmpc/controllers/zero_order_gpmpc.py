@@ -12,12 +12,13 @@ class ZeroOrderGPMPC(ResidualLearningMPC):
         B: np.ndarray = None,
         residual_model: ResidualModel = None,
         use_cython: bool = True,
-        path_json_ocp: str = "zoro_ocp_solver_config.json",
-        path_json_sim: str = "zoro_sim_solver_config.json",
+        path_json_ocp: str = "zogpmpc_ocp_solver_config.json",
+        path_json_sim: str = "zogpmpc_sim_solver_config.json",
         build_c_code: bool = True,
     ) -> None:
-        # Set up all member variables but don't build the code yet. We still need to setup
-        # the custom update.
+
+        ocp = self.setup_custom_update(ocp)
+
         super().__init__(
             ocp,
             B=B,
@@ -25,19 +26,8 @@ class ZeroOrderGPMPC(ResidualLearningMPC):
             use_cython=use_cython,
             path_json_ocp=path_json_ocp,
             path_json_sim=path_json_sim,
-            build_c_code=False,
+            build_c_code=build_c_code,
         )
-
-        self.setup_custom_update()
-
-        self.build_c_code_done = False
-        if build_c_code:
-            self.build(
-                use_cython=use_cython,
-                build_c_code=build_c_code,
-                path_json_ocp=path_json_ocp,
-                path_json_sim=path_json_sim,
-            )
 
     def solve(self):
         for i in range(self.ocp_opts["nlp_solver_max_iter"]):
@@ -60,17 +50,17 @@ class ZeroOrderGPMPC(ResidualLearningMPC):
             if np.all(residuals < self.ocp_opts_tol_arr):
                 break
 
-    def setup_custom_update(self):
+    def setup_custom_update(self, ocp):
         template_c_file = "custom_update_function_zoro_template.in.c"
         template_h_file = "custom_update_function_zoro_template.in.h"
         custom_c_file = "custom_update_function.c"
         custom_h_file = "custom_update_function.h"
 
         # custom update: disturbance propagation
-        self.ocp.solver_options.custom_update_filename = custom_c_file
-        self.ocp.solver_options.custom_update_header_filename = custom_h_file
+        ocp.solver_options.custom_update_filename = custom_c_file
+        ocp.solver_options.custom_update_header_filename = custom_h_file
 
-        self.ocp.solver_options.custom_templates = [
+        ocp.solver_options.custom_templates = [
             (
                 template_c_file,
                 custom_c_file,
@@ -81,18 +71,20 @@ class ZeroOrderGPMPC(ResidualLearningMPC):
             ),
         ]
 
-        self.ocp.solver_options.custom_update_copy = False
+        ocp.solver_options.custom_update_copy = False
         """NOTE(@naefjo): As far as I understand you need to set this variable to True if you just
         want to copy an existing custom_update.c/h into the export directory and to False if you want
         to render the custom_udpate files from the template"""
 
-        if self.ocp.zoro_description.input_P0_diag:
-            self.zoro_input_P0 = np.diag(self.ocp.zoro_description.P0_mat)
+        if ocp.zoro_description.input_P0_diag:
+            self.zoro_input_P0 = np.diag(ocp.zoro_description.P0_mat)
         else:
-            self.zoro_input_P0 = self.ocp.zoro_description.P0_mat
+            self.zoro_input_P0 = ocp.zoro_description.P0_mat
 
-        self.zoro_input_W_diag = np.diag(self.ocp.zoro_description.W_mat)
-        self.covariances_array = np.zeros(((self.N + 1) * self.nx**2,))
+        self.zoro_input_W_diag = np.diag(ocp.zoro_description.W_mat)
+        self.covariances_array = np.zeros(((ocp.dims.N + 1) * ocp.dims.nx**2,))
+
+        return ocp
 
     def do_custom_update(self) -> None:
         """performs the acados custom update and propagates the covariances for the constraint tightening
