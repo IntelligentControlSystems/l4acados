@@ -372,8 +372,7 @@ ocp_init.zoro_description = zoro_description
 # %% metadata={}
 residual_mpc = ZeroOrderGPMPC(
     ocp_init,
-    sim,
-    gp_model=residual_model,
+    residual_model=residual_model,
     use_cython=False,
     path_json_ocp="residual_mpc_ocp_solver_config.json",
     path_json_sim="residual_mpc_sim_solver_config.json",
