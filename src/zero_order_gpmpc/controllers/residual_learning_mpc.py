@@ -17,8 +17,8 @@ class ResidualLearningMPC:
         residual_model: ResidualModel = None,
         build_c_code: bool = True,
         use_cython: bool = True,
-        path_json_ocp: str = "zoro_ocp_solver_config.json",
-        path_json_sim: str = "zoro_sim_solver_config.json",
+        path_json_ocp: str = "residual_lbmpc_ocp_solver_config.json",
+        path_json_sim: str = "residual_lbmpc_sim_solver_config.json",
     ) -> None:
         """
         ocp: AcadosOcp for nominal problem
@@ -77,14 +77,12 @@ class ResidualLearningMPC:
             self.has_residual_model = True
             self.residual_model = residual_model
 
-        self.build_c_code_done = False
-        if build_c_code:
-            self.build(
-                use_cython=use_cython,
-                build_c_code=build_c_code,
-                path_json_ocp=path_json_ocp,
-                path_json_sim=path_json_sim,
-            )
+        self.build(
+            use_cython=use_cython,
+            build_c_code=build_c_code,
+            path_json_ocp=path_json_ocp,
+            path_json_sim=path_json_sim,
+        )
 
     def build(
         self,
@@ -115,8 +113,6 @@ class ResidualLearningMPC:
         else:
             self.ocp_solver = AcadosOcpSolver(self.ocp, json_file=path_json_ocp)
             self.sim_solver = AcadosSimSolver(self.sim, json_file=path_json_sim)
-
-        self.build_c_code_done = True
 
     def solve(self):
         for i in range(self.ocp_opts["nlp_solver_max_iter"]):
