@@ -7,6 +7,7 @@ from .zoro_acados_utils import (
     get_solve_opts_from_ocp,
 )
 from zero_order_gpmpc.models import ResidualModel
+from typing import Tuple
 
 
 class ResidualLearningMPC:
@@ -207,7 +208,9 @@ class ResidualLearningMPC:
         status = self.ocp_solver.solve()
         return status
 
-    def get_solution(self) -> tuple[np.ndarray, np.ndarray]:
+    def get_solution(
+        self,
+    ) -> Tuple[np.ndarray, np.ndarray]:
         X = np.zeros((self.N + 1, self.nx))
         U = np.zeros((self.N, self.nu))
 
