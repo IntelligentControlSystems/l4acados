@@ -12,10 +12,10 @@ from acados_template import (
     AcadosOcpSolver,
     ZoroDescription,
 )
-from zoro_acados_utils import *
-
 from time import perf_counter
 from dataclasses import dataclass
+
+from .zoro_acados_utils import *
 
 
 @dataclass

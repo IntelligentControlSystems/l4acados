@@ -36,6 +36,8 @@ class ResidualLearningMPC:
         path_json_sim: Name of the json file where the resulting sim will be dumped
         """
 
+        ocp.make_consistent()
+
         # optional argument
         if B is None:
             B = np.eye(ocp.dims.nx)
@@ -120,6 +122,7 @@ class ResidualLearningMPC:
             self.preparation()
             status_feed = self.feedback()
 
+            # TODO: do this after preparation for correct residuals
             # ------------------- Check termination --------------------
             # check on residuals and terminate loop.
             residuals = self.ocp_solver.get_residuals()
@@ -133,6 +136,8 @@ class ResidualLearningMPC:
 
             if np.all(residuals < self.ocp_opts_tol_arr):
                 break
+
+        return status_feed
 
     def preparation(self):
         # ------------------- Query nodes --------------------
@@ -222,3 +227,49 @@ class ResidualLearningMPC:
         X[self.N, :] = self.ocp_solver.get(self.N, "x")
 
         return X, U
+
+    # Forward OCP solver functions
+    def get(self, stage: int, var: str) -> np.ndarray:
+        if var == "p":
+            assert 0 <= stage <= self.N
+            return self.p_hat_nonlin[stage, :]
+        else:
+            return self.ocp_solver.get(stage, var)
+
+    def get_stats(self, stat: str):
+        return self.ocp_solver.get_stats(stat)
+
+    def set(self, stage: int, var: str, value: np.ndarray) -> None:
+        if var == "p":
+            assert 0 <= stage <= self.N
+            self.p_hat_nonlin[stage, :] = value
+        else:
+            self.ocp_solver.set(stage, var, value)
+
+    def cost_set(self, stage: int, cost: str, value: np.ndarray) -> None:
+        self.ocp_solver.cost_set(stage, cost, value)
+
+    def constraints_set(self, stage: int, constraint: str, value: np.ndarray) -> None:
+        self.ocp_solver.constraints_set(stage, constraint, value)
+
+    def options_set(self, option: str, value) -> None:
+        self.ocp_solver.options_set(option, value)
+
+    def solve_for_x0(
+        self, x0_bar, fail_on_nonzero_status=True, print_stats_on_failure=True
+    ) -> np.ndarray:
+        self.ocp_solver.set(0, "lbx", x0_bar)
+        self.ocp_solver.set(0, "ubx", x0_bar)
+
+        status = self.solve()
+
+        if status != 0:
+            if print_stats_on_failure:
+                self.ocp_solver.print_statistics()
+            if fail_on_nonzero_status:
+                raise Exception(f"acados acados_ocp_solver returned status {status}")
+            elif print_stats_on_failure:
+                print(f"Warning: acados acados_ocp_solver returned status {status}")
+
+        u0 = self.ocp_solver.get(0, "u")
+        return u0

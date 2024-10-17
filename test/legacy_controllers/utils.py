@@ -2,7 +2,8 @@ import numpy as np
 from numpy import linalg as npla
 from dataclasses import dataclass
 import matplotlib.pyplot as plt
-from inverted_pendulum_model_acados import export_simplependulum_ode_model
+
+from .inverted_pendulum_model_acados import export_simplependulum_ode_model
 
 # Plotting
 
