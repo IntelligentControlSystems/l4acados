@@ -1,7 +1,6 @@
 import sys, os, shutil
 import argparse
 
-sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 sys.path.insert(
     0,
     os.path.abspath(os.path.join(os.path.dirname(__file__), "../../external/")),
@@ -24,9 +23,17 @@ import gpytorch
 import copy
 import re
 
-# legacy imports
-from zoro_acados import ZoroAcados
-from zoro_acados_custom_update import ZoroAcadosCustomUpdate
+# local imports for legacy controllers
+from .zoro_acados import ZoroAcados
+from .zoro_acados_custom_update import ZoroAcadosCustomUpdate
+from .zoro_acados_utils import (
+    tighten_model_constraints,
+)
+from .inverted_pendulum_model_acados import (
+    export_simplependulum_ode_model,
+    export_ocp_nominal,
+)
+from .utils import *
 
 # zoRO imports
 import zero_order_gpmpc
@@ -34,14 +41,12 @@ from zero_order_gpmpc.controllers import (
     ZeroOrderGPMPC,
 )
 from zero_order_gpmpc.controllers.zoro_acados_utils import setup_sim_from_ocp
-from zoro_acados_utils import (
-    tighten_model_constraints,
+from zero_order_gpmpc.models.gpytorch_models.gpytorch_gp import (
+    BatchIndependentMultitaskGPModel,
 )
-from inverted_pendulum_model_acados import (
-    export_simplependulum_ode_model,
-    export_ocp_nominal,
+from zero_order_gpmpc.models.gpytorch_models.gpytorch_residual_model import (
+    GPyTorchResidualModel,
 )
-from utils import *
 
 # gpytorch_utils
 from gpytorch_utils.gp_hyperparam_training import (
@@ -54,12 +59,6 @@ from gpytorch_utils.gp_utils import (
     gp_derivative_data_from_model_and_path,
     plot_gp_data,
     generate_grid_points,
-)
-from zero_order_gpmpc.models.gpytorch_models.gpytorch_gp import (
-    BatchIndependentMultitaskGPModel,
-)
-from zero_order_gpmpc.models.gpytorch_models.gpytorch_residual_model import (
-    GPyTorchResidualModel,
 )
 
 

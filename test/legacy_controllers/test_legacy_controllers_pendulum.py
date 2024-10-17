@@ -1,11 +1,9 @@
 import sys, os
 import numpy as np
-
-sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
-
-from run_example import solve_pendulum
-from utils import base_plot, EllipsoidTubeData2D, add_plot_trajectory
 import matplotlib.pyplot as plt
+
+from .run_example import solve_pendulum
+from .utils import base_plot, EllipsoidTubeData2D, add_plot_trajectory
 
 
 def test_legacy_controllers_pendulum():
