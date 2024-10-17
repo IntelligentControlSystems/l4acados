@@ -41,3 +41,4 @@ run tests: # Run tests
   retry: 0
   tags:
     - deep-thought
+  resource_group: cpu-heavy # TODO: replace this with clever caching

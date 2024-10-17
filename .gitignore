@@ -1,5 +1,4 @@
 # Notebooks in test folder
-
 test/*/*.ipynb
 test/*.ipynb
 
@@ -14,6 +13,10 @@ test/legacy_controllers/*.json
 
 # Examples
 examples/inverted_pendulum/*.json
+examples/l4casadi_vs_l4acados/data/
+
+# PDF
+*.pdf
 
 # CasADi / acados
 c_generated_code/
@@ -21,7 +24,7 @@ jit_tmp*.c
 tmp_casadi_compiler_shell*.o
 *sim*.json
 *ocp*.json
-
+_l4c_generated/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
