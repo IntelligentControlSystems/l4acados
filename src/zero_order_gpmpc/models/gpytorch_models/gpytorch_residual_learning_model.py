@@ -63,7 +63,7 @@ class RecordDataStrategy(DataProcessingStrategy):
     a file.
     """
 
-    def __init__(self, x_data_path: str, y_data_path: str):
+    def __init__(self, x_data_path: str, y_data_path: str, buffer_size: int = 50):
         """Construct the data recorder.
 
         Args:
@@ -72,6 +72,7 @@ class RecordDataStrategy(DataProcessingStrategy):
         """
         self.x_data_path = x_data_path
         self.y_data_path = y_data_path
+        self.buffer_size = buffer_size
         self._gp_training_data = {"x_training_data": [], "y_training_data": []}
 
     def process(
@@ -85,7 +86,7 @@ class RecordDataStrategy(DataProcessingStrategy):
         self._gp_training_data["x_training_data"].append(x_input)
         self._gp_training_data["y_training_data"].append(y_target)
 
-        if len(self._gp_training_data["x_training_data"]) == 50:
+        if len(self._gp_training_data["x_training_data"]) == self.buffer_size:
             # Do we need a local copy?
             save_data_x = np.array(self._gp_training_data["x_training_data"])
             save_data_y = np.array(self._gp_training_data["y_training_data"])

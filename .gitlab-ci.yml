@@ -1,44 +1,113 @@
 image: python:3.9
 stages:
   - format
+  - acados
+  - python
   - test
 
 ### =============================================================
 ### ==============     FORMATTING STAGE    ======================
 ### =============================================================
 
-run formatters: # Check whether code adheres to the required formats
-  stage: format
-  script:
-    - pip install pre-commit && pre-commit install
-    - pre-commit run -a
+.deep_thought_job:
   retry: 0
   tags:
     - deep-thought
 
-### =============================================================
-### ==============     TESTING STAGE    =========================
-### =============================================================
-run tests: # Run tests
-  stage: test
-  parallel:
-    matrix:
-      - IMAGE: ["python:3.8", "python:3.9", "python:3.10"]
-  image: $IMAGE
-  before_script:
-    # apt install
-    - apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y cmake wget
-    # acados install
-    - cd $CI_PROJECT_DIR && git submodule update --recursive --init || exit 1
-    - mkdir -p $CI_PROJECT_DIR/external/acados/build && cd $CI_PROJECT_DIR/external/acados/build && cmake -DACADOS_PYTHON=ON .. && make install -j4 && export ACADOS_SOURCE_DIR=$CI_PROJECT_DIR/external/acados && export LD_LIBRARY_PATH=$ACADOS_SOURCE_DIR/lib || exit 1
-    - cd $CI_PROJECT_DIR/external/acados/bin && wget https://github.com/acados/tera_renderer/releases/download/v0.0.34/t_renderer-v0.0.34-linux -O t_renderer && chmod +x t_renderer || exit 1
-    - cd $CI_PROJECT_DIR && python -m venv .venv
-    - cd $CI_PROJECT_DIR && source .venv/bin/activate && pip install -r requirements.txt || exit 1
-    - cd $CI_PROJECT_DIR || exit 1
+run formatters: # Check whether code adheres to the required formats
+  extends: .deep_thought_job
+  stage: format
   script:
-    - cd $CI_PROJECT_DIR && source .venv/bin/activate && pip install pytest
-    - cd $CI_PROJECT_DIR && source .venv/bin/activate && pytest --ignore external/
+    - pip install pre-commit && pre-commit install
+    - pre-commit run -a
+
+
+### =============================================================
+### ==============     PREPARATION STAGE    =====================
+### =============================================================
+
+install acados:
+  extends: .deep_thought_job
+  stage: acados
+  image: python:3.8
+  script:
+    - apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y cmake wget
+    - cd $CI_PROJECT_DIR && git submodule update --recursive --init || exit 1
+    - mkdir -p $CI_PROJECT_DIR/external/acados/build && cd $CI_PROJECT_DIR/external/acados/build && cmake -DACADOS_PYTHON=ON .. && make install -j4 || exit 1
+    - cd $CI_PROJECT_DIR/external/acados/bin && wget https://github.com/acados/tera_renderer/releases/download/v0.0.34/t_renderer-v0.0.34-linux -O t_renderer && chmod +x t_renderer || exit 1
   retry: 0
   tags:
     - deep-thought
-  resource_group: cpu-heavy # TODO: replace this with clever caching
+  artifacts:
+    paths:
+      - $CI_PROJECT_DIR/external/acados/
+
+.python_parallel_matrix_job:
+  extends: .deep_thought_job
+  image: "python:$PYTHON_VERSION"
+  parallel:
+    matrix:
+      - PYTHON_VERSION: ["3.8", "3.9", "3.10"]
+
+install python dependencies:
+  extends: .python_parallel_matrix_job
+  stage: python
+  script:
+    - python --version ; pip --version  # For debugging
+    - python -m venv $VENV_DIR
+    - source "$VENV_DIR/bin/activate" || exit 1
+    - pip install -r requirements.txt || exit 1
+    - pip install pytest || exit 1
+  variables:
+    PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+    VENV_DIR: "$CI_PROJECT_DIR/.venv_$PYTHON_VERSION"
+  cache:
+    key: pip-cache-$PYTHON_VERSION
+    paths:
+      - .cache/pip
+      # - $VENV_DIR # TODO: fix caching of venv
+  # artifacts:
+  #   paths:
+  #     - "$VENV_DIR/"
+
+
+### =============================================================
+### ==============     TESTING STAGE    =========================
+### =============================================================
+
+.pytest_job:
+  extends: .python_parallel_matrix_job
+  stage: test
+  # before_script: # TODO: cache .venv directory
+  #   - python --version ; pip --version  # For debugging
+  #   - source "$VENV_DIR/bin/activate" || exit 1
+  before_script:
+    - python --version ; pip --version  # For debugging
+    - python -m venv $VENV_DIR
+    - source "$VENV_DIR/bin/activate" || exit 1
+    - pip install -r requirements.txt || exit 1
+    - pip install pytest || exit 1
+  script:
+    - pytest --ignore external/
+  variables:
+    ACADOS_SOURCE_DIR: "$CI_PROJECT_DIR/external/acados"
+    LD_LIBRARY_PATH: "$ACADOS_SOURCE_DIR/lib"
+    VENV_DIR: "$CI_PROJECT_DIR/.venv_$PYTHON_VERSION"
+    PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+  cache:
+    key: pip-cache-$PYTHON_VERSION
+    paths:
+      - .cache/pip
+      # - $VENV_DIR
+    policy: pull
+
+run gpytorch_model tests: # Run tests
+  extends: .pytest_job
+  resource_group: cpu-heavy # TODO: make this job less demanding
+  script:
+    - pytest test/test_gpytorch_learning_model.py
+
+run remaining tests:
+  extends: .pytest_job
+  script:
+    - pytest --ignore external/ --ignore test/test_gpytorch_learning_model.py
