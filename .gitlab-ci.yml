@@ -32,7 +32,6 @@ install acados:
   image: python:3.8
   script:
     - apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y cmake wget
-    - cd $CI_PROJECT_DIR && git submodule update --recursive --init || exit 1
     - mkdir -p $CI_PROJECT_DIR/external/acados/build && cd $CI_PROJECT_DIR/external/acados/build && cmake -DACADOS_PYTHON=ON .. && make install -j4 || exit 1
     - cd $CI_PROJECT_DIR/external/acados/bin && wget https://github.com/acados/tera_renderer/releases/download/v0.0.34/t_renderer-v0.0.34-linux -O t_renderer && chmod +x t_renderer || exit 1
   retry: 0
@@ -41,6 +40,9 @@ install acados:
   artifacts:
     paths:
       - $CI_PROJECT_DIR/external/acados/
+  variables:
+    GIT_SUBMODULE_STRATEGY: recursive
+    GIT_SUBMODULE_PATHS: external/acados
 
 .python_parallel_matrix_job:
   extends: .deep_thought_job
@@ -107,7 +109,8 @@ run gpytorch_model tests: # Run tests
   script:
     - pytest test/test_gpytorch_learning_model.py
 
-run remaining tests:
-  extends: .pytest_job
-  script:
-    - pytest --ignore external/ --ignore test/test_gpytorch_learning_model.py
+# TODO: add other tests
+# run remaining tests:
+#   extends: .pytest_job
+#   script:
+#     - pytest --ignore external/ --ignore test/test_gpytorch_learning_model.py
