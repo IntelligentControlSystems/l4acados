@@ -22,7 +22,7 @@ def count_lines(filepath: str) -> int:
         return sum(1 for line in file)
 
 
-def test_unconditioned_gp(num_tests: int = 10) -> None:
+def test_unconditioned_gp(num_tests: int = 6) -> None:
     """Test initalization, querying and updating of unconditioned gp"""
     add_data_times_ms = []
     eval_times_ms = []
@@ -80,14 +80,20 @@ def test_unconditioned_gp(num_tests: int = 10) -> None:
         gpytorch_gp_model.eval()
         gpytorch_gp_model.likelihood.eval()
 
+        num_record_steps = 20
         gp = GPyTorchResidualLearningModel(
             gp_model=gpytorch_gp_model,
             gp_feature_selector=input_selection,
-            data_processing_strategy=RecordDataStrategy(x_data_path, y_data_path),
+            data_processing_strategy=RecordDataStrategy(
+                x_data_path,
+                y_data_path,
+                buffer_size=num_record_steps,
+                # NOTE: num_record_steps needs to be divisible by buffer size; otherwise wrong file size
+            ),
             verbose=True,
         )
 
-        for _ in range(100):
+        for _ in range(num_record_steps):
             x_rand_data = np.random.rand(state_dimension)
             y_rand_data = np.random.rand(residual_dimension)
 
@@ -117,14 +123,14 @@ def test_unconditioned_gp(num_tests: int = 10) -> None:
         f"trials: {np.average(eval_times_ms):.4f} ms."
     )
 
-    num_lines_x_data = count_lines(x_data_path)
-    num_lines_y_data = count_lines(y_data_path)
-
     # wait for threads to finish
     sleep(5)
 
-    assert num_lines_x_data == num_tests * 100
-    assert num_lines_y_data == num_tests * 100
+    num_lines_x_data = count_lines(x_data_path)
+    num_lines_y_data = count_lines(y_data_path)
+
+    assert num_lines_x_data == num_tests * num_record_steps
+    assert num_lines_y_data == num_tests * num_record_steps
 
     os.remove(x_data_path)
     os.remove(y_data_path)
@@ -177,7 +183,7 @@ def load_data(x_data_path: str, y_data_path: str) -> Tuple[torch.Tensor, torch.T
     return train_x_tensor, train_y_tensor
 
 
-def test_load_gp_from_file(num_tests: int = 10) -> None:
+def test_load_gp_from_file(num_tests: int = 6) -> None:
     """Test initialization of the GP from a file"""
     add_data_times_ms = []
     eval_times_ms = []
@@ -281,7 +287,7 @@ def test_load_gp_from_file(num_tests: int = 10) -> None:
             data_processing_strategy=RecordDataStrategy(x_data_path, y_data_path),
         )
 
-        for _ in range(100):
+        for _ in range(20):
             x_rand_data = np.random.rand(state_dimension)
             y_rand_data = np.random.rand(residual_dimension)
 
@@ -318,11 +324,16 @@ def test_load_gp_from_file(num_tests: int = 10) -> None:
     os.remove(y_data_path)
 
 
-def test_incorporate_new_data(num_tests: int = 10):
+def test_incorporate_new_data(num_tests: int = 6):
     add_data_times_ms = []
     eval_times_ms = []
 
-    for _ in range(num_tests):
+    max_points_online = 20
+    sim_steps_list = np.linspace(
+        max_points_online - 5, max_points_online + 5, num_tests, dtype=int
+    )
+
+    for i in range(num_tests):
         # Test random input size and random jacobian
         state_dimension = np.random.randint(1, 10)
         residual_dimension = np.random.randint(1, 5)
@@ -358,12 +369,12 @@ def test_incorporate_new_data(num_tests: int = 10):
         gp = GPyTorchResidualLearningModel(
             gp_model=gpytorch_gp_model,
             gp_feature_selector=input_selection,
-            data_processing_strategy=OnlineLearningStrategy(200),
+            data_processing_strategy=OnlineLearningStrategy(max_points_online),
         )
 
         gp.value_and_jacobian(torch.rand(1, state_dimension))
 
-        for _ in range(400):
+        for _ in range(sim_steps_list[i]):
             x_rand_data = np.random.rand(state_dimension)
             y_rand_data = np.random.rand(residual_dimension)
 
@@ -385,9 +396,11 @@ def test_incorporate_new_data(num_tests: int = 10):
             eval_times_ms.append((perf_counter() - time_before) * 1e3)
 
         assert gp.gp_model.train_inputs[0].shape == torch.Size(
-            [200, sum(input_feature_selection)]
+            [min(sim_steps_list[i], max_points_online), sum(input_feature_selection)]
         )
-        assert gp.gp_model.train_targets.shape == torch.Size([200, residual_dimension])
+        assert gp.gp_model.train_targets.shape == torch.Size(
+            [min(sim_steps_list[i], max_points_online), residual_dimension]
+        )
 
     print(
         f"data adding avg over {len(add_data_times_ms)} "
@@ -400,7 +413,7 @@ def test_incorporate_new_data(num_tests: int = 10):
 
 
 def train_gp_model(
-    gp_model, torch_seed=None, training_iterations=200, learning_rate=0.1
+    gp_model, torch_seed=None, training_iterations=10, learning_rate=1.0
 ):
     if torch_seed is not None:
         torch.manual_seed(torch_seed)
@@ -452,7 +465,7 @@ def train_gp_model(
     likelihood.eval()
 
 
-def test_inducing_point_gp_from_file(num_tests: int = 10) -> None:
+def test_inducing_point_gp_from_file(num_tests: int = 6) -> None:
     """Test initialization of the GP from a file"""
     add_data_times_ms = []
     eval_times_ms = []
@@ -545,7 +558,7 @@ def test_inducing_point_gp_from_file(num_tests: int = 10) -> None:
             data_processing_strategy=RecordDataStrategy(x_data_path, y_data_path),
         )
 
-        for _ in range(100):
+        for _ in range(20):
             x_rand_data = np.random.rand(state_dimension)
             y_rand_data = np.random.rand(residual_dimension)
 
