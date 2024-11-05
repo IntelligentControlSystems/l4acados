@@ -21,6 +21,11 @@ dependencies = [
     "numpy",
 ]
 
+[project.optional-dependencies]
+test = [
+    "pytest",
+]
+
 [build-system]
 requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
@@ -29,6 +34,7 @@ build-backend = "setuptools.build_meta"
 addopts = [
     "--import-mode=importlib",
 ]
+pythonpath = "test"
 
 [tool.setuptools.packages.find]
 where = ["src"]
