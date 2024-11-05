@@ -229,7 +229,7 @@ def run(use_RTI=False, use_l4acados=False, plot=True):
     return simX, simU, timings
 
 
-if __name__ == "__main__":
+def test_minimal_example_closed_loop(show_plots=False):
     simX_l4acados, simU_l4acados, timings_l4acados = run(
         use_RTI=False, use_l4acados=True, plot=True
     )
@@ -242,7 +242,9 @@ if __name__ == "__main__":
     simX_acados_rti, simU_acados_rti, timings_acados_rti = run(
         use_RTI=True, use_l4acados=False, plot=True
     )
-    plt.show()
+
+    if show_plots:
+        plt.show()
 
     atol = 1e-5
     rtol = 1e-3
@@ -250,3 +252,7 @@ if __name__ == "__main__":
     assert np.allclose(simU_l4acados, simU_acados, atol=atol, rtol=rtol)
     assert np.allclose(simX_l4acados_rti, simX_acados_rti, atol=atol, rtol=rtol)
     assert np.allclose(simU_l4acados_rti, simU_acados_rti, atol=atol, rtol=rtol)
+
+
+if __name__ == "__main__":
+    test_minimal_example_closed_loop()
