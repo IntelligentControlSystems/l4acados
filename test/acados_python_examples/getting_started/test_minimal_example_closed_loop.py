@@ -26,7 +26,6 @@
 # ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.;
 #
-import sys, os
 import numpy as np
 import scipy.linalg
 from casadi import vertcat
@@ -34,16 +33,18 @@ from zero_order_gpmpc.controllers import ResidualLearningMPC
 import matplotlib.pyplot as plt
 from acados_template import AcadosOcp, AcadosOcpSolver, AcadosSimSolver
 
-from .pendulum_model import export_pendulum_ode_model
-from .utils import plot_pendulum
+from acados_python_examples.getting_started.pendulum_model import (
+    export_pendulum_ode_model,
+)
+from acados_python_examples.getting_started.utils import plot_pendulum
 
 
-def create_ocp(x0, Fmax, N_horizon, Tf, RTI=False):
+def create_ocp(x0, Fmax, N_horizon, Tf, RTI=False, model_name="pendulum_ode"):
     # create ocp object to formulate the OCP
     ocp = AcadosOcp()
 
     # set model
-    model = export_pendulum_ode_model()
+    model = export_pendulum_ode_model(model_name=model_name)
     ocp.model = model
 
     nx = model.x.rows()
@@ -79,16 +80,23 @@ def create_ocp(x0, Fmax, N_horizon, Tf, RTI=False):
     ocp.solver_options.hessian_approx = "GAUSS_NEWTON"
     ocp.solver_options.integrator_type = "IRK"
     ocp.solver_options.sim_method_newton_iter = 10
+    ocp.solver_options.qp_tol = 1e-8
+    ocp.solver_options.print_level = 0
+    ocp.solver_options.tol = 1e-6
 
     if RTI:
         ocp.solver_options.nlp_solver_type = "SQP_RTI"
         ocp.solver_options.nlp_solver_max_iter = 1
+        ocp.solver_options.rti_log_residuals = 1
+        ocp.solver_options.rti_log_only_available_residuals = 1
     else:
         ocp.solver_options.nlp_solver_type = "SQP"
-        ocp.solver_options.globalization = (
-            "MERIT_BACKTRACKING"  # turns on globalization
-        )
+        # NOTE: globalization currently not supported by l4acados
+        # ocp.solver_options.globalization = (
+        #     "MERIT_BACKTRACKING"  # turns on globalization
+        # )
         ocp.solver_options.nlp_solver_max_iter = 150
+        # ocp.solver_options.store_iterates = True
 
     ocp.solver_options.qp_solver_cond_N = N_horizon
 
@@ -106,7 +114,7 @@ def setup_acados(ocp, json_file):
     return acados_ocp_solver, acados_integrator
 
 
-def run(use_RTI=False, use_l4acados=False, plot=True):
+def run(use_RTI=False, use_l4acados=False, plot=True, max_sqp_iter=150):
 
     x0 = np.array([0.0, np.pi, 0.0, 0.0])
     Fmax = 80
@@ -114,7 +122,21 @@ def run(use_RTI=False, use_l4acados=False, plot=True):
     Tf = 0.8
     N_horizon = 40
 
+    model_name = "pendulum_ode"
+    solve_kwargs = {}
+    if use_l4acados:
+        model_name += f"_l4a"
+        if not use_RTI:
+            solve_kwargs = {"acados_sqp_mode": True}
+    if use_RTI:
+        max_sqp_iter = 1
+        model_name += f"_rti_{max_sqp_iter}"
+    else:
+        model_name += f"_sqp_{max_sqp_iter}"
+
     ocp = create_ocp(x0, Fmax, N_horizon, Tf, use_RTI)
+    ocp.solver_options.nlp_solver_max_iter = max_sqp_iter
+
     solver_json = "acados_ocp_" + ocp.model.name + ".json"
 
     if use_l4acados:
@@ -134,64 +156,55 @@ def run(use_RTI=False, use_l4acados=False, plot=True):
     nx = ocp.dims.nx
     nu = ocp.dims.nu
 
-    Nsim = 100
+    Nsim = 10
     simX = np.zeros((Nsim + 1, nx))
     simU = np.zeros((Nsim, nu))
 
     simX[0, :] = x0
 
-    t_preparation = np.zeros((Nsim))
-    t_feedback = np.zeros((Nsim))
-    t_total = np.zeros((Nsim))
+    t_total = np.zeros((Nsim,))
+    nlp_residuals = np.zeros((Nsim, max_sqp_iter + 1, 4))
 
     # do some initial iterations to start with a good initial guess
-    num_iter_initial = 5
-    for _ in range(num_iter_initial):
-        ocp_solver.solve_for_x0(x0_bar=x0)
+    # if use_RTI or max_sqp_iter == 1:
+    #     num_iter_initial = 5
+    #     for _ in range(num_iter_initial):
+    #         ocp_solver.solve_for_x0(x0_bar=x0, fail_on_nonzero_status=False)
+    #         print(ocp_solver.get_residuals())
 
     # closed loop
     for i in range(Nsim):
+        # set initial state
+        ocp_solver.set(0, "lbx", simX[i, :])
+        ocp_solver.set(0, "ubx", simX[i, :])
 
         if use_RTI and not use_l4acados:
-            # preparation phase
-            ocp_solver.options_set("rti_phase", 1)
-            status = ocp_solver.solve()
-            t_preparation[i] = ocp_solver.get_stats("time_tot")
-
-            # set initial state
-            ocp_solver.set(0, "lbx", simX[i, :])
-            ocp_solver.set(0, "ubx", simX[i, :])
-
-            # feedback phase
-            ocp_solver.options_set("rti_phase", 2)
-            status = ocp_solver.solve()
-            t_feedback[i] = ocp_solver.get_stats("time_tot")
-
-            simU[i, :] = ocp_solver.get(0, "u")
-
+            status = ocp_solver.solve(**solve_kwargs)
         else:
-            # solve ocp and get next control input
-            simU[i, :] = ocp_solver.solve_for_x0(x0_bar=simX[i, :])
+            status = ocp_solver.solve(**solve_kwargs)
 
-            t_total[i] = ocp_solver.get_stats("time_tot")
+        t_total[i] = ocp_solver.get_stats("time_tot")
+        simU[i, :] = ocp_solver.get(0, "u")
+
+        if use_RTI:
+            res_stat = ocp_solver.get_stats("res_stat_all")[[0]]
+            res_eq = ocp_solver.get_stats("res_eq_all")[[0]]
+            res_ineq = ocp_solver.get_stats("res_ineq_all")[[0]]
+            res_comp = ocp_solver.get_stats("res_comp_all")[[0]]
+        else:
+            res_stat = ocp_solver.get_stats("res_stat_all")
+            res_eq = ocp_solver.get_stats("res_eq_all")
+            res_ineq = ocp_solver.get_stats("res_ineq_all")
+            res_comp = ocp_solver.get_stats("res_comp_all")
+
+        nlp_residuals[i, : len(res_stat), 0] = res_stat
+        nlp_residuals[i, : len(res_eq), 1] = res_eq
+        nlp_residuals[i, : len(res_ineq), 2] = res_ineq
+        nlp_residuals[i, : len(res_comp), 3] = res_comp
+        # nlp_residuals[i, :] = ocp_solver.get_initial_residuals()
 
         # simulate system
         simX[i + 1, :] = integrator.simulate(x=simX[i, :], u=simU[i, :])
-
-    # evaluate timings
-    if use_RTI:
-        # scale to milliseconds
-        t_preparation *= 1000
-        t_feedback *= 1000
-        t_total = t_preparation + t_feedback
-        print(
-            f"Computation time in preparation phase in ms: \
-                min {np.min(t_preparation):.3f} median {np.median(t_preparation):.3f} max {np.max(t_preparation):.3f}"
-        )
-        print(
-            f"Computation time in feedback phase in ms:    \
-                min {np.min(t_feedback):.3f} median {np.median(t_feedback):.3f} max {np.max(t_feedback):.3f}"
-        )
 
     # scale to milliseconds
     t_total *= 1000
@@ -199,14 +212,7 @@ def run(use_RTI=False, use_l4acados=False, plot=True):
         f"Computation time (total) in ms: min {np.min(t_total):.3f} median {np.median(t_total):.3f} max {np.max(t_total):.3f}"
     )
 
-    if use_RTI:
-        timings = {
-            "preparation": t_preparation,
-            "feedback": t_feedback,
-            "total": t_total,
-        }
-    else:
-        timings = {"total": t_total}
+    timings = {"total": t_total}
 
     # plot results
     model = ocp.model
@@ -224,34 +230,51 @@ def run(use_RTI=False, use_l4acados=False, plot=True):
             plt_show=False,
         )
 
-    ocp_solver = None
+    del ocp_solver
 
-    return simX, simU, timings
+    return simX, simU, timings, nlp_residuals
 
 
-def test_minimal_example_closed_loop(show_plots=False):
-    simX_l4acados, simU_l4acados, timings_l4acados = run(
+def test_minimal_example_closed_loop():
+    simX_l4acados, simU_l4acados, timings_l4acados, nlp_res_l4acados = run(
         use_RTI=False, use_l4acados=True, plot=True
     )
-    simX_acados, simU_acados, timings_acados = run(
+    simX_acados, simU_acados, timings_acados, nlp_res_acados = run(
         use_RTI=False, use_l4acados=False, plot=True
     )
-    simX_l4acados_rti, simU_l4acados_rti, timings_l4acados_rti = run(
-        use_RTI=True, use_l4acados=True, plot=True
+    (
+        simX_l4acados_1sqp,
+        simU_l4acados_1sqp,
+        timings_l4acados_1sqp,
+        nlp_res_l4acados_1sqp,
+    ) = run(use_RTI=False, use_l4acados=True, plot=True, max_sqp_iter=1)
+    (
+        simX_acados_1sqp,
+        simU_acados_1sqp,
+        timings_acados_1sqp,
+        nlp_res_acados_1sqp,
+    ) = run(use_RTI=False, use_l4acados=False, plot=True, max_sqp_iter=1)
+    simX_l4acados_rti, simU_l4acados_rti, timings_l4acados_rti, nlp_res_l4acados_rti = (
+        run(use_RTI=True, use_l4acados=True, plot=True)
     )
-    simX_acados_rti, simU_acados_rti, timings_acados_rti = run(
+    simX_acados_rti, simU_acados_rti, timings_acados_rti, nlp_res_acados_rti = run(
         use_RTI=True, use_l4acados=False, plot=True
     )
+    # plt.show()
 
-    if show_plots:
-        plt.show()
-
-    atol = 1e-5
-    rtol = 1e-3
+    atol = 1e-10
+    rtol = 1e-6
     assert np.allclose(simX_l4acados, simX_acados, atol=atol, rtol=rtol)
     assert np.allclose(simU_l4acados, simU_acados, atol=atol, rtol=rtol)
     assert np.allclose(simX_l4acados_rti, simX_acados_rti, atol=atol, rtol=rtol)
     assert np.allclose(simU_l4acados_rti, simU_acados_rti, atol=atol, rtol=rtol)
+
+    # acados check: *initial* residuals after 1 sqp iteration vs. after RTI
+    assert np.allclose(
+        nlp_res_acados_1sqp[:, 0, :], nlp_res_acados_rti[:, 0, :], atol=atol, rtol=rtol
+    )
+    assert np.allclose(nlp_res_l4acados, nlp_res_acados, atol=atol, rtol=rtol)
+    assert np.allclose(nlp_res_l4acados_rti, nlp_res_acados_rti, atol=atol, rtol=rtol)
 
 
 if __name__ == "__main__":

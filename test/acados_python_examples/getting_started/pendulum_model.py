@@ -32,9 +32,7 @@ from acados_template import AcadosModel
 from casadi import SX, vertcat, sin, cos
 
 
-def export_pendulum_ode_model() -> AcadosModel:
-
-    model_name = "pendulum_ode"
+def export_pendulum_ode_model(model_name="pendulum_ode") -> AcadosModel:
 
     # constants
     M = 1.0  # mass of the cart [kg] -> now estimated
