@@ -41,12 +41,11 @@ class ResidualLearningMPC:
         # optional argument
         if B is None:
             B = np.eye(ocp.dims.nx)
+        self.B = B
 
         # transform OCP to linear-params-model
-        self.B = B
+        self.ocp, self.ocp_opts = transform_ocp(ocp)
         self.sim = setup_sim_from_ocp(ocp)
-        self.ocp = transform_ocp(ocp)
-        self.ocp_opts = get_solve_opts_from_ocp(ocp)
         self.ocp_opts_tol_arr = np.array(
             [
                 self.ocp_opts["nlp_solver_tol_stat"],
@@ -68,12 +67,16 @@ class ResidualLearningMPC:
         self.x_hat_all = np.zeros((self.N + 1, self.nx))
         self.u_hat_all = np.zeros((self.N, self.nu))
         self.y_hat_all = np.zeros((self.N, self.nx + self.nu))
+        self.init_last_iterate()
+
         self.residual_fun = np.zeros((self.N, self.nw))
         self.residual_jac = np.zeros((self.nw, self.N, self.nx + self.nu))
         self.p_hat_nonlin = np.array([ocp.parameter_values for _ in range(self.N + 1)])
         self.p_hat_linmdl = np.array(
             [self.ocp.parameter_values for _ in range(self.N + 1)]
         )
+        self.nlp_residuals = np.zeros((self.ocp_opts["nlp_solver_max_iter"], 4))
+        self.num_iter = 0
 
         self.has_residual_model = False
         if residual_model is not None:
@@ -117,25 +120,33 @@ class ResidualLearningMPC:
             self.ocp_solver = AcadosOcpSolver(self.ocp, json_file=path_json_ocp)
             self.sim_solver = AcadosSimSolver(self.sim, json_file=path_json_sim)
 
-    def solve(self):
+    def solve(self, acados_sqp_mode=False):
+        status_feed = 0
+        self.num_iter = 0
         for i in range(self.ocp_opts["nlp_solver_max_iter"]):
             self.preparation()
+
+            if acados_sqp_mode:
+                self.store_last_iterate()
+
             status_feed = self.feedback()
-
-            # TODO: do this after preparation for correct residuals
-            # ------------------- Check termination --------------------
-            # check on residuals and terminate loop.
-            residuals = self.ocp_solver.get_residuals()
-
             if status_feed != 0:
                 raise Exception(
                     "acados self.ocp_solver returned status {} in time step {}. Exiting.".format(
                         status_feed, i
                     )
                 )
+            self.num_iter += 1
 
-            if np.all(residuals < self.ocp_opts_tol_arr):
-                break
+            # ------------------- Check termination --------------------
+            if self.ocp.solver_options.rti_log_residuals:
+                self.nlp_residuals[i, :] = self.get_initial_residuals()
+
+                if np.all(self.nlp_residuals[i, :] < self.ocp_opts_tol_arr):
+                    if acados_sqp_mode:
+                        # restore previous iterate for which residuals are valid
+                        self.load_last_iterate()
+                    break
 
         return status_feed
 
@@ -144,7 +155,7 @@ class ResidualLearningMPC:
         # preparation rti_phase (solve() AFTER setting params to get right Jacobians)
         self.ocp_solver.options_set("rti_phase", 1)
 
-        # get sensitivities for all stages
+        # get linearization points for all stages
         for stage in range(self.N):
             # current stage values
             self.x_hat_all[stage, :] = self.ocp_solver.get(stage, "x")
@@ -228,15 +239,98 @@ class ResidualLearningMPC:
 
         return X, U
 
-    # Forward OCP solver functions
+    def init_last_iterate(self):
+        n_eq_constr = self.ocp.dims.nx + self.ocp.dims.nz
+        n_ineq_constr_0 = (
+            self.ocp.dims.nbx_0
+            + self.ocp.dims.nbu
+            + self.ocp.dims.ng
+            + self.ocp.dims.nh_0
+            + self.ocp.dims.nphi_0
+        )
+        n_ineq_constr = (
+            self.ocp.dims.nbx
+            + self.ocp.dims.nbu
+            + self.ocp.dims.ng
+            + self.ocp.dims.nh
+            + self.ocp.dims.nphi
+        )
+        n_ineq_constr_e = (
+            self.ocp.dims.nbx_e
+            + self.ocp.dims.ng_e
+            + self.ocp.dims.nh_e
+            + self.ocp.dims.nphi_e
+        )
+
+        self.pi_hat_all = np.zeros((self.N, self.nx))
+        self.lam_hat_all_0 = np.zeros((2 * n_ineq_constr_0,))
+        self.lam_hat_all = np.zeros(
+            (
+                self.N,
+                2 * n_ineq_constr,
+            )
+        )
+        self.lam_hat_all_e = np.zeros((2 * n_ineq_constr_e,))
+
+        self.x_hat_all_lastiter = np.zeros((self.N + 1, self.nx))
+        self.u_hat_all_lastiter = np.zeros((self.N, self.nu))
+        self.pi_hat_all_lastiter = np.zeros((self.N, n_eq_constr))
+        self.lam_hat_all_lastiter_0 = np.zeros((2 * n_ineq_constr_0,))
+        self.lam_hat_all_lastiter = np.zeros((self.N, 2 * n_ineq_constr))
+        self.lam_hat_all_lastiter_e = np.zeros((2 * n_ineq_constr_e,))
+
+    def load_last_iterate(self):
+        self.ocp_solver.set(0, "lam", self.lam_hat_all_lastiter_0[:])
+        for stage in range(self.N):
+            self.ocp_solver.set(stage, "x", self.x_hat_all_lastiter[stage, :])
+            self.ocp_solver.set(stage, "u", self.u_hat_all_lastiter[stage, :])
+            self.ocp_solver.set(stage, "pi", self.pi_hat_all_lastiter[stage, :])
+            if stage > 0:
+                self.ocp_solver.set(stage, "lam", self.lam_hat_all_lastiter[stage, :])
+        self.ocp_solver.set(self.N, "x", self.x_hat_all_lastiter[self.N, :])
+        self.ocp_solver.set(self.N, "lam", self.lam_hat_all_lastiter_e[:])
+
+    def store_last_iterate(self):
+        self.lam_hat_all_lastiter_0[:] = self.ocp_solver.get(0, "lam")
+        for stage in range(self.N):
+            self.x_hat_all_lastiter[stage, :] = self.ocp_solver.get(stage, "x")
+            self.u_hat_all_lastiter[stage, :] = self.ocp_solver.get(stage, "u")
+            self.pi_hat_all_lastiter[stage, :] = self.ocp_solver.get(stage, "pi")
+            if stage > 0:
+                self.lam_hat_all_lastiter[stage, :] = self.ocp_solver.get(stage, "lam")
+        self.x_hat_all_lastiter[self.N, :] = self.ocp_solver.get(self.N, "x")
+        self.lam_hat_all_lastiter_e[:] = self.ocp_solver.get(self.N, "lam")
+
+    # ------------------- Forward OCP solver functions -------------------
+    def dump_last_qp_to_json(self, *args, **kwargs) -> None:
+        self.ocp_solver.dump_last_qp_to_json(*args, **kwargs)
+
     def get(self, stage: int, var: str) -> np.ndarray:
         if var == "p":
             assert 0 <= stage <= self.N
-            return self.p_hat_nonlin[stage, :]
+            return self.p_hat_nonlin[stage, :]  # params are set in preparation phase
         else:
             return self.ocp_solver.get(stage, var)
 
+    def get_initial_residuals(self) -> np.ndarray:
+        return self.ocp_solver.get_initial_residuals()
+
+    def get_residuals(self, recompute=False, ignore_warning=False) -> np.ndarray:
+        if ignore_warning:
+            return self.ocp_solver.get_residuals(recompute, ignore_warning)
+        raise ValueError(
+            "Only logging of available residuals is supported. Use get_initial_residuals() instead. See https://github.com/acados/acados/pull/1346."
+        )
+
     def get_stats(self, stat: str):
+        if stat == "res_stat_all":
+            return self.nlp_residuals[: self.num_iter, 0]
+        if stat == "res_eq_all":
+            return self.nlp_residuals[: self.num_iter, 1]
+        if stat == "res_ineq_all":
+            return self.nlp_residuals[: self.num_iter, 2]
+        if stat == "res_comp_all":
+            return self.nlp_residuals[: self.num_iter, 3]
         return self.ocp_solver.get_stats(stat)
 
     def set(self, stage: int, var: str, value: np.ndarray) -> None:
@@ -254,6 +348,16 @@ class ResidualLearningMPC:
 
     def options_set(self, option: str, value) -> None:
         self.ocp_solver.options_set(option, value)
+
+    def print_statistics(self) -> None:
+        if self.ocp_opts["nlp_solver_type"] == "SQP":
+            print("iter    res_stat        res_eq          res_ineq        res_comp")
+            for i in range(self.num_iter):
+                print(
+                    f"{i:<7d} {self.nlp_residuals[i, 0]:12e}    {self.nlp_residuals[i, 1]:12e}    {self.nlp_residuals[i, 2]:12e}    {self.nlp_residuals[i, 3]:11e}"
+                )
+            return
+        self.ocp_solver.print_statistics()
 
     def solve_for_x0(
         self, x0_bar, fail_on_nonzero_status=True, print_stats_on_failure=True

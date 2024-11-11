@@ -48,6 +48,7 @@ def export_linear_model(x, u, p):
 
 def transform_ocp(ocp_input):
     ocp = deepcopy(ocp_input)
+    ocp_opts = get_solve_opts_from_ocp(ocp)
 
     original_nparam = ocp.dims.np
 
@@ -67,9 +68,39 @@ def transform_ocp(ocp_input):
     if original_nparam > 0:
         ocp.parameter_values[-original_nparam:] = ocp_parameter_values
 
+    # adjust OCP options in case of SQP to get residuals
+    if ocp_opts["nlp_solver_type"] == "SQP":
+        ocp.solver_options.rti_log_only_available_residuals = 1
+        ocp.solver_options.rti_log_residuals = 1
+        print(
+            "WARNING: Only logging of available residuals is supported for SQP. SQP iteration will be terminated based on previous residual"
+        )
+
+        if ocp_opts["globalization"] == "FIXED_STEP":
+            if ocp_opts["globalization_fixed_step_length"] != 1.0:
+                # TODO: implement this
+                raise ValueError(
+                    "Only globalization_fixed_step_length = 1.0 is supported."
+                )
+        else:
+            raise ValueError("Only globalization = 'FIXED_STEP' is supported.")
+
+    elif ocp_opts["nlp_solver_type"] == "SQP_RTI":
+        if (
+            ocp.solver_options.rti_log_residuals == 1
+            and ocp.solver_options.rti_log_only_available_residuals == 0
+        ):
+            raise ValueError(
+                "Only logging of available residuals is supported. Please set rti_log_only_available_residuals to 1."
+            )
+    else:
+        raise ValueError("Only nlp_solver_type = {'SQP','SQP_RTI'} is supported.")
+
     ocp.solver_options.integrator_type = "DISCRETE"
     ocp.solver_options.nlp_solver_type = "SQP_RTI"
-    return ocp
+    ocp.solver_options.nlp_solver_max_iter = 1
+
+    return ocp, ocp_opts
 
 
 def setup_sim_from_ocp(ocp):
