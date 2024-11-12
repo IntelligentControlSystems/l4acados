@@ -67,7 +67,6 @@ class ResidualLearningMPC:
         self.x_hat_all = np.zeros((self.N + 1, self.nx))
         self.u_hat_all = np.zeros((self.N, self.nu))
         self.y_hat_all = np.zeros((self.N, self.nx + self.nu))
-        self.init_last_iterate()
 
         self.residual_fun = np.zeros((self.N, self.nw))
         self.residual_jac = np.zeros((self.nw, self.N, self.nx + self.nu))
@@ -89,6 +88,8 @@ class ResidualLearningMPC:
             path_json_ocp=path_json_ocp,
             path_json_sim=path_json_sim,
         )
+
+        self.init_last_iterate()
 
     def build(
         self,
@@ -240,44 +241,25 @@ class ResidualLearningMPC:
         return X, U
 
     def init_last_iterate(self):
-        n_eq_constr = self.ocp.dims.nx + self.ocp.dims.nz
-        n_ineq_constr_0 = (
-            self.ocp.dims.nbx_0
-            + self.ocp.dims.nbu
-            + self.ocp.dims.ng
-            + self.ocp.dims.nh_0
-            + self.ocp.dims.nphi_0
-        )
-        n_ineq_constr = (
-            self.ocp.dims.nbx
-            + self.ocp.dims.nbu
-            + self.ocp.dims.ng
-            + self.ocp.dims.nh
-            + self.ocp.dims.nphi
-        )
-        n_ineq_constr_e = (
-            self.ocp.dims.nbx_e
-            + self.ocp.dims.ng_e
-            + self.ocp.dims.nh_e
-            + self.ocp.dims.nphi_e
-        )
+        npi = len(self.ocp_solver.get(0, "pi"))
+        nlam_0 = len(self.ocp_solver.get(0, "lam"))
+        if self.N > 1:
+            nlam = len(self.ocp_solver.get(1, "lam"))
+        else:
+            nlam = 0
+        nlam_e = len(self.ocp_solver.get(self.N, "lam"))
 
         self.pi_hat_all = np.zeros((self.N, self.nx))
-        self.lam_hat_all_0 = np.zeros((2 * n_ineq_constr_0,))
-        self.lam_hat_all = np.zeros(
-            (
-                self.N,
-                2 * n_ineq_constr,
-            )
-        )
-        self.lam_hat_all_e = np.zeros((2 * n_ineq_constr_e,))
+        self.lam_hat_all_0 = np.zeros((nlam_0,))
+        self.lam_hat_all = np.zeros((self.N, nlam))
+        self.lam_hat_all_e = np.zeros((nlam_e,))
 
         self.x_hat_all_lastiter = np.zeros((self.N + 1, self.nx))
         self.u_hat_all_lastiter = np.zeros((self.N, self.nu))
-        self.pi_hat_all_lastiter = np.zeros((self.N, n_eq_constr))
-        self.lam_hat_all_lastiter_0 = np.zeros((2 * n_ineq_constr_0,))
-        self.lam_hat_all_lastiter = np.zeros((self.N, 2 * n_ineq_constr))
-        self.lam_hat_all_lastiter_e = np.zeros((2 * n_ineq_constr_e,))
+        self.pi_hat_all_lastiter = np.zeros((self.N, npi))
+        self.lam_hat_all_lastiter_0 = np.zeros((nlam_0,))
+        self.lam_hat_all_lastiter = np.zeros((self.N, nlam))
+        self.lam_hat_all_lastiter_e = np.zeros((nlam_e,))
 
     def load_last_iterate(self):
         self.ocp_solver.set(0, "lam", self.lam_hat_all_lastiter_0[:])
