@@ -46,7 +46,7 @@ def export_linear_model(x, u, p):
     return model
 
 
-def transform_ocp(ocp_input):
+def transform_ocp(ocp_input, use_cython):
     ocp = deepcopy(ocp_input)
     ocp_opts = get_solve_opts_from_ocp(ocp)
 
@@ -70,11 +70,18 @@ def transform_ocp(ocp_input):
 
     # adjust OCP options in case of SQP to get residuals
     if ocp_opts["nlp_solver_type"] == "SQP":
-        ocp.solver_options.rti_log_only_available_residuals = 1
-        ocp.solver_options.rti_log_residuals = 1
-        print(
-            "WARNING: Only logging of available residuals is supported for SQP. SQP iteration will be terminated based on previous residual"
-        )
+        if use_cython:
+            ocp.solver_options.rti_log_only_available_residuals = 0
+            ocp.solver_options.rti_log_residuals = 0
+            print(
+                "WARNING: Logging of (initial) residuals is not supported for the acados Cython interface. SQP iteration will be terminated based number of iterations only."
+            )
+        else:
+            ocp.solver_options.rti_log_only_available_residuals = 1
+            ocp.solver_options.rti_log_residuals = 1
+            print(
+                "WARNING: Only logging of initial residuals is supported for SQP. SQP iteration will be terminated based on previous residual."
+            )
 
         if ocp_opts["globalization"] == "FIXED_STEP":
             if ocp_opts["globalization_fixed_step_length"] != 1.0:

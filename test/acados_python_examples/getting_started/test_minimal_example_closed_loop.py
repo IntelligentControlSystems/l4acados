@@ -39,7 +39,15 @@ from acados_python_examples.getting_started.pendulum_model import (
 from acados_python_examples.getting_started.utils import plot_pendulum
 
 
-def create_ocp(x0, Fmax, N_horizon, Tf, RTI=False, model_name="pendulum_ode"):
+def create_ocp(
+    x0,
+    Fmax,
+    N_horizon,
+    Tf,
+    RTI=False,
+    model_name="pendulum_ode",
+    rti_log_residuals=True,
+):
     # create ocp object to formulate the OCP
     ocp = AcadosOcp()
 
@@ -87,8 +95,9 @@ def create_ocp(x0, Fmax, N_horizon, Tf, RTI=False, model_name="pendulum_ode"):
     if RTI:
         ocp.solver_options.nlp_solver_type = "SQP_RTI"
         ocp.solver_options.nlp_solver_max_iter = 1
-        ocp.solver_options.rti_log_residuals = 1
-        ocp.solver_options.rti_log_only_available_residuals = 1
+        if rti_log_residuals:
+            ocp.solver_options.rti_log_residuals = 1
+            ocp.solver_options.rti_log_only_available_residuals = 1
     else:
         ocp.solver_options.nlp_solver_type = "SQP"
         # NOTE: globalization currently not supported by l4acados
@@ -114,7 +123,14 @@ def setup_acados(ocp, json_file):
     return acados_ocp_solver, acados_integrator
 
 
-def run(use_RTI=False, use_l4acados=False, plot=True, max_sqp_iter=150):
+def run(
+    use_RTI=False,
+    use_l4acados=False,
+    plot=True,
+    max_sqp_iter=150,
+    use_cython=False,
+    rti_log_residuals=True,
+):
 
     x0 = np.array([0.0, np.pi, 0.0, 0.0])
     Fmax = 80
@@ -134,7 +150,9 @@ def run(use_RTI=False, use_l4acados=False, plot=True, max_sqp_iter=150):
     else:
         model_name += f"_sqp_{max_sqp_iter}"
 
-    ocp = create_ocp(x0, Fmax, N_horizon, Tf, use_RTI)
+    ocp = create_ocp(
+        x0, Fmax, N_horizon, Tf, RTI=use_RTI, rti_log_residuals=rti_log_residuals
+    )
     ocp.solver_options.nlp_solver_max_iter = max_sqp_iter
 
     solver_json = "acados_ocp_" + ocp.model.name + ".json"
@@ -144,7 +162,7 @@ def run(use_RTI=False, use_l4acados=False, plot=True, max_sqp_iter=150):
         solver_json_sim = "l4acados_sim_" + ocp.model.name + ".json"
         l4acados_solver = ResidualLearningMPC(
             ocp,
-            use_cython=False,
+            use_cython=use_cython,
             path_json_ocp=solver_json_ocp,
             path_json_sim=solver_json_sim,
         )
@@ -186,22 +204,23 @@ def run(use_RTI=False, use_l4acados=False, plot=True, max_sqp_iter=150):
         t_total[i] = ocp_solver.get_stats("time_tot")
         simU[i, :] = ocp_solver.get(0, "u")
 
-        if use_RTI:
-            res_stat = ocp_solver.get_stats("res_stat_all")[[0]]
-            res_eq = ocp_solver.get_stats("res_eq_all")[[0]]
-            res_ineq = ocp_solver.get_stats("res_ineq_all")[[0]]
-            res_comp = ocp_solver.get_stats("res_comp_all")[[0]]
-        else:
-            res_stat = ocp_solver.get_stats("res_stat_all")
-            res_eq = ocp_solver.get_stats("res_eq_all")
-            res_ineq = ocp_solver.get_stats("res_ineq_all")
-            res_comp = ocp_solver.get_stats("res_comp_all")
+        if rti_log_residuals:
+            if use_RTI:
+                res_stat = ocp_solver.get_stats("res_stat_all")[[0]]
+                res_eq = ocp_solver.get_stats("res_eq_all")[[0]]
+                res_ineq = ocp_solver.get_stats("res_ineq_all")[[0]]
+                res_comp = ocp_solver.get_stats("res_comp_all")[[0]]
+            else:
+                res_stat = ocp_solver.get_stats("res_stat_all")
+                res_eq = ocp_solver.get_stats("res_eq_all")
+                res_ineq = ocp_solver.get_stats("res_ineq_all")
+                res_comp = ocp_solver.get_stats("res_comp_all")
 
-        nlp_residuals[i, : len(res_stat), 0] = res_stat
-        nlp_residuals[i, : len(res_eq), 1] = res_eq
-        nlp_residuals[i, : len(res_ineq), 2] = res_ineq
-        nlp_residuals[i, : len(res_comp), 3] = res_comp
-        # nlp_residuals[i, :] = ocp_solver.get_initial_residuals()
+            nlp_residuals[i, : len(res_stat), 0] = res_stat
+            nlp_residuals[i, : len(res_eq), 1] = res_eq
+            nlp_residuals[i, : len(res_ineq), 2] = res_ineq
+            nlp_residuals[i, : len(res_comp), 3] = res_comp
+            # nlp_residuals[i, :] = ocp_solver.get_initial_residuals()
 
         # simulate system
         simX[i + 1, :] = integrator.simulate(x=simX[i, :], u=simU[i, :])
@@ -236,29 +255,21 @@ def run(use_RTI=False, use_l4acados=False, plot=True, max_sqp_iter=150):
 
 
 def test_minimal_example_closed_loop():
-    simX_l4acados, simU_l4acados, timings_l4acados, nlp_res_l4acados = run(
-        use_RTI=False, use_l4acados=True, plot=True
+    simX_l4acados, simU_l4acados, _, nlp_res_l4acados = run(
+        use_RTI=False, use_l4acados=True
     )
-    simX_acados, simU_acados, timings_acados, nlp_res_acados = run(
-        use_RTI=False, use_l4acados=False, plot=True
+    simX_acados, simU_acados, _, nlp_res_acados = run(use_RTI=False, use_l4acados=False)
+    simX_l4acados_1sqp, simU_l4acados_1sqp, _, nlp_res_l4acados_1sqp = run(
+        use_RTI=False, use_l4acados=True, max_sqp_iter=1
     )
-    (
-        simX_l4acados_1sqp,
-        simU_l4acados_1sqp,
-        timings_l4acados_1sqp,
-        nlp_res_l4acados_1sqp,
-    ) = run(use_RTI=False, use_l4acados=True, plot=True, max_sqp_iter=1)
-    (
-        simX_acados_1sqp,
-        simU_acados_1sqp,
-        timings_acados_1sqp,
-        nlp_res_acados_1sqp,
-    ) = run(use_RTI=False, use_l4acados=False, plot=True, max_sqp_iter=1)
-    simX_l4acados_rti, simU_l4acados_rti, timings_l4acados_rti, nlp_res_l4acados_rti = (
-        run(use_RTI=True, use_l4acados=True, plot=True)
+    simX_acados_1sqp, simU_acados_1sqp, _, nlp_res_acados_1sqp = run(
+        use_RTI=False, use_l4acados=False, max_sqp_iter=1
     )
-    simX_acados_rti, simU_acados_rti, timings_acados_rti, nlp_res_acados_rti = run(
-        use_RTI=True, use_l4acados=False, plot=True
+    simX_l4acados_rti, simU_l4acados_rti, _, nlp_res_l4acados_rti = run(
+        use_RTI=True, use_l4acados=True
+    )
+    simX_acados_rti, simU_acados_rti, _, nlp_res_acados_rti = run(
+        use_RTI=True, use_l4acados=False
     )
     # plt.show()
 
@@ -277,5 +288,47 @@ def test_minimal_example_closed_loop():
     assert np.allclose(nlp_res_l4acados_rti, nlp_res_acados_rti, atol=atol, rtol=rtol)
 
 
+def test_cython_sqp_mode():
+    simX_l4acados, simU_l4acados, _, _ = run(
+        use_RTI=False,
+        use_l4acados=True,
+    )
+    simX_l4acados_cy, simU_l4acados_cy, _, _ = run(
+        use_RTI=False,
+        use_l4acados=True,
+        use_cython=True,
+        rti_log_residuals=False,
+    )
+
+    atol = 1e-10
+    rtol = 1e-6
+    assert np.allclose(simX_l4acados, simX_l4acados_cy, atol=atol, rtol=rtol)
+    assert np.allclose(simU_l4acados, simU_l4acados_cy, atol=atol, rtol=rtol)
+    # NOTE: cannot check residuals since not supports in acados Cython interface
+    # assert np.allclose(nlp_res_l4acados, nlp_res_l4acados_cy, atol=atol, rtol=rtol)
+
+
+# TODO: call tests from subprocess to avoid conflicts with multiple cython solvers
+# def test_cython_sqp_mode_sqp1():
+#     simX_l4acados_sqp1, simU_l4acados_sqp1, _, _ = run_as_subprocess(
+#         use_RTI=False,
+#         use_l4acados=True,
+#         max_sqp_iter=1,
+#     )
+#     simX_l4acados_sqp1_cy, simU_l4acados_sqp1_cy, _, _ = run_as_subprocess(
+#         use_RTI=False,
+#         use_l4acados=True,
+#         use_cython=True,
+#         rti_log_residuals=False,
+#         max_sqp_iter=1,
+#     )
+#     atol = 1e-10
+#     rtol = 1e-6
+#     assert np.allclose(simX_l4acados_sqp1, simX_l4acados_sqp1_cy, atol=atol, rtol=rtol)
+#     assert np.allclose(simU_l4acados_sqp1, simU_l4acados_sqp1_cy, atol=atol, rtol=rtol)
+
+
 if __name__ == "__main__":
     test_minimal_example_closed_loop()
+    test_cython_sqp_mode()
+    # test_cython_sqp_mode_sqp1()

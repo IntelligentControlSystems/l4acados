@@ -44,7 +44,7 @@ class ResidualLearningMPC:
         self.B = B
 
         # transform OCP to linear-params-model
-        self.ocp, self.ocp_opts = transform_ocp(ocp)
+        self.ocp, self.ocp_opts = transform_ocp(ocp, use_cython)
         self.sim = setup_sim_from_ocp(ocp)
         self.ocp_opts_tol_arr = np.array(
             [
@@ -108,6 +108,7 @@ class ResidualLearningMPC:
         path_json_sim: Name of the json file where the resulting sim will be dumped
             (or was dumped if build_c_code == False)
         """
+        self.use_cython = use_cython
         if use_cython:
             if build_c_code:
                 AcadosOcpSolver.generate(self.ocp, json_file=path_json_ocp)
@@ -262,26 +263,38 @@ class ResidualLearningMPC:
         self.lam_hat_all_lastiter_e = np.zeros((nlam_e,))
 
     def load_last_iterate(self):
-        self.ocp_solver.set(0, "lam", self.lam_hat_all_lastiter_0[:])
-        for stage in range(self.N):
-            self.ocp_solver.set(stage, "x", self.x_hat_all_lastiter[stage, :])
-            self.ocp_solver.set(stage, "u", self.u_hat_all_lastiter[stage, :])
-            self.ocp_solver.set(stage, "pi", self.pi_hat_all_lastiter[stage, :])
-            if stage > 0:
-                self.ocp_solver.set(stage, "lam", self.lam_hat_all_lastiter[stage, :])
-        self.ocp_solver.set(self.N, "x", self.x_hat_all_lastiter[self.N, :])
-        self.ocp_solver.set(self.N, "lam", self.lam_hat_all_lastiter_e[:])
+        # TODO: remove this once cython support is enabled
+        if self.use_cython:
+            self.ocp_solver.set(0, "lam", self.lam_hat_all_lastiter_0[:])
+            for stage in range(self.N):
+                self.ocp_solver.set(stage, "x", self.x_hat_all_lastiter[stage, :])
+                self.ocp_solver.set(stage, "u", self.u_hat_all_lastiter[stage, :])
+                self.ocp_solver.set(stage, "pi", self.pi_hat_all_lastiter[stage, :])
+                if stage > 0:
+                    self.ocp_solver.set(
+                        stage, "lam", self.lam_hat_all_lastiter[stage, :]
+                    )
+            self.ocp_solver.set(self.N, "x", self.x_hat_all_lastiter[self.N, :])
+            self.ocp_solver.set(self.N, "lam", self.lam_hat_all_lastiter_e[:])
+        else:
+            self.ocp_solver.load_iterate_from_flat_obj(self.last_iterate)
 
     def store_last_iterate(self):
-        self.lam_hat_all_lastiter_0[:] = self.ocp_solver.get(0, "lam")
-        for stage in range(self.N):
-            self.x_hat_all_lastiter[stage, :] = self.ocp_solver.get(stage, "x")
-            self.u_hat_all_lastiter[stage, :] = self.ocp_solver.get(stage, "u")
-            self.pi_hat_all_lastiter[stage, :] = self.ocp_solver.get(stage, "pi")
-            if stage > 0:
-                self.lam_hat_all_lastiter[stage, :] = self.ocp_solver.get(stage, "lam")
-        self.x_hat_all_lastiter[self.N, :] = self.ocp_solver.get(self.N, "x")
-        self.lam_hat_all_lastiter_e[:] = self.ocp_solver.get(self.N, "lam")
+        # TODO: remove this once cython support is enabled
+        if self.use_cython:
+            self.lam_hat_all_lastiter_0[:] = self.ocp_solver.get(0, "lam")
+            for stage in range(self.N):
+                self.x_hat_all_lastiter[stage, :] = self.ocp_solver.get(stage, "x")
+                self.u_hat_all_lastiter[stage, :] = self.ocp_solver.get(stage, "u")
+                self.pi_hat_all_lastiter[stage, :] = self.ocp_solver.get(stage, "pi")
+                if stage > 0:
+                    self.lam_hat_all_lastiter[stage, :] = self.ocp_solver.get(
+                        stage, "lam"
+                    )
+            self.x_hat_all_lastiter[self.N, :] = self.ocp_solver.get(self.N, "x")
+            self.lam_hat_all_lastiter_e[:] = self.ocp_solver.get(self.N, "lam")
+        else:
+            self.last_iterate = self.ocp_solver.store_iterate_to_flat_obj()
 
     # ------------------- Forward OCP solver functions -------------------
     def dump_last_qp_to_json(self, *args, **kwargs) -> None:
