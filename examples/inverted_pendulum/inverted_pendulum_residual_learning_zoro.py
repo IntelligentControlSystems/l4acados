@@ -64,7 +64,7 @@ from gpytorch_utils.gp_utils import (
     plot_gp_data,
     generate_grid_points,
 )
-from zero_order_gpmpc.models.gpytorch_models.gpytorch_gp import (
+from zero_order_gpmpc.models.pytorch_models.gpytorch_gp import (
     BatchIndependentMultitaskGPModel,
 )
 
@@ -334,7 +334,7 @@ plt.draw()
 # # Residual-Model MPC
 
 # %% metadata={}
-from zero_order_gpmpc.models.gpytorch_models.gpytorch_residual_model import (
+from zero_order_gpmpc.models.pytorch_models.gpytorch_residual_model import (
     GPyTorchResidualModel,
 )
 

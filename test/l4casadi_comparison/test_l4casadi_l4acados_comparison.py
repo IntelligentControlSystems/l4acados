@@ -6,8 +6,8 @@ from typing import Optional, Union
 import torch
 import casadi as cs
 from zero_order_gpmpc.controllers.residual_learning_mpc import ResidualLearningMPC
-from zero_order_gpmpc.models import ResidualModel
-from zero_order_gpmpc.models.gpytorch_models.gpytorch_residual_model import (
+from zero_order_gpmpc.models.pytorch_models import PyTorchResidualModel
+from zero_order_gpmpc.models.pytorch_models.pytorch_feature_selector import (
     FeatureSelector,
 )
 from zero_order_gpmpc.controllers.zoro_acados_utils import setup_sim_from_ocp
@@ -23,79 +23,6 @@ from l4casadi_comparison.l4casadi_with_acados import (
     MPC,
     train_nn,
 )
-
-
-class PyTorchResidualModel(ResidualModel):
-    """Basic PyTorch residual model class.
-
-    Args:
-        - model: Any Pytorch torch.nn.Module.
-        - feature_selector: Optional feature selector mapping (state, input) -> (NN input dimension). If set to None, then no selection
-          is performed.
-    """
-
-    def __init__(
-        self,
-        model: torch.nn.Module,
-        feature_selector: Optional[FeatureSelector] = None,
-        device="cpu",
-    ):
-        self.model = model
-
-        self._gp_feature_selector = (
-            feature_selector if feature_selector is not None else FeatureSelector()
-        )
-
-        if device == "cuda":
-            self.to_tensor = lambda X: torch.Tensor(X).cuda()
-            self.to_numpy = lambda T: T.cpu().detach().numpy()
-            self.model.cuda()
-        elif device == "cpu":
-            self.to_tensor = lambda X: torch.Tensor(X)
-            self.to_numpy = lambda T: T.detach().numpy()
-            self.model.cpu()
-        else:
-            raise ValueError(f"Unknown device {device}, should be 'cpu' or 'gpu'")
-
-    def _mean_fun_sum(self, y):
-        """Helper function for jacobian computation
-
-        sums up the mean predictions along the first dimension
-        (i.e. along the horizon).
-        """
-        self.evaluate(y, require_grad=True)
-        return self.predictions.sum(dim=0)
-
-    def evaluate(self, y, require_grad=False):
-        y_tensor = self.to_tensor(y)
-        if require_grad:
-            self.predictions = self.model(self._gp_feature_selector(y_tensor))
-        else:
-            with torch.no_grad():
-                self.predictions = self.model(self._gp_feature_selector(y_tensor))
-
-        self.current_mean = self.to_numpy(self.predictions)
-        return self.current_mean
-
-    def jacobian(self, y):
-        y_tensor = self.to_tensor(y)
-        mean_dy = torch.autograd.functional.jacobian(self._mean_fun_sum, y_tensor)
-        return self.to_numpy(mean_dy)
-
-    def value_and_jacobian(self, y):
-        """Computes the necessary values for GPMPC
-
-        Args:
-            - x_input: (N, state_dim) tensor
-
-        Returns:
-            - mean:  (N, residual_dim) tensor
-            - mean_dy:  (residual_dim, N, state_dim) tensor
-            - covariance:  (N, residual_dim) tensor
-        """
-        self.current_mean_dy = self.jacobian(y)
-
-        return self.current_mean, self.current_mean_dy
 
 
 def init_l4casadi(
@@ -133,7 +60,6 @@ def init_l4acados(
     residual_model = PyTorchResidualModel(
         nn_model,
         feature_selector,
-        device=device,
     )
     B_proj = (1.0 / N) * np.array([[1.0], [1.0]])  # NOTE: Ts = 1.0 hard coded
     model_new = DoubleIntegratorWithLearnedDynamics(None, name="wr_new")
