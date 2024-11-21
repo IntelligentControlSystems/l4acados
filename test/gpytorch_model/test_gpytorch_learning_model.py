@@ -9,8 +9,10 @@ import gpytorch
 from zero_order_gpmpc.models.pytorch_models.pytorch_feature_selector import (
     FeatureSelector,
 )
-from zero_order_gpmpc.models.pytorch_models.gpytorch_residual_learning_model import (
-    GPyTorchResidualLearningModel,
+from zero_order_gpmpc.models.pytorch_models.gpytorch_residual_model import (
+    GPyTorchResidualModel,
+)
+from zero_order_gpmpc.models.pytorch_models.gpytorch_data_processing_strategy import (
     OnlineLearningStrategy,
     RecordDataStrategy,
 )
@@ -81,16 +83,15 @@ def test_unconditioned_gp(num_tests: int = 6) -> None:
         gpytorch_gp_model.likelihood.eval()
 
         num_record_steps = 20
-        gp = GPyTorchResidualLearningModel(
+        gp = GPyTorchResidualModel(
             gp_model=gpytorch_gp_model,
-            gp_feature_selector=input_selection,
+            feature_selector=input_selection,
             data_processing_strategy=RecordDataStrategy(
                 x_data_path,
                 y_data_path,
                 buffer_size=num_record_steps,
                 # NOTE: num_record_steps needs to be divisible by buffer size; otherwise wrong file size
             ),
-            verbose=True,
         )
 
         for _ in range(num_record_steps):
@@ -281,9 +282,9 @@ def test_load_gp_from_file(num_tests: int = 6) -> None:
         gpytorch_model.eval()
         gpytorch_model.likelihood.eval()
 
-        gp = GPyTorchResidualLearningModel(
+        gp = GPyTorchResidualModel(
             gp_model=gpytorch_model,
-            gp_feature_selector=input_selection,
+            feature_selector=input_selection,
             data_processing_strategy=RecordDataStrategy(x_data_path, y_data_path),
         )
 
@@ -366,9 +367,9 @@ def test_incorporate_new_data(num_tests: int = 6):
         gpytorch_gp_model.eval()
         gpytorch_gp_model.likelihood.eval()
 
-        gp = GPyTorchResidualLearningModel(
+        gp = GPyTorchResidualModel(
             gp_model=gpytorch_gp_model,
-            gp_feature_selector=input_selection,
+            feature_selector=input_selection,
             data_processing_strategy=OnlineLearningStrategy(max_points_online),
         )
 
@@ -552,9 +553,9 @@ def test_inducing_point_gp_from_file(num_tests: int = 6) -> None:
         print(gpytorch_model.covar_module.base_kernel.outputscale)
         print(gpytorch_model.covar_module.base_kernel.base_kernel.lengthscale)
 
-        gp = GPyTorchResidualLearningModel(
+        gp = GPyTorchResidualModel(
             gp_model=gpytorch_model,
-            gp_feature_selector=input_selection,
+            feature_selector=input_selection,
             data_processing_strategy=RecordDataStrategy(x_data_path, y_data_path),
         )
 
