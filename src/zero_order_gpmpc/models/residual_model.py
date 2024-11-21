@@ -1,15 +1,8 @@
 from abc import ABC, abstractmethod
+import numpy as np
 
 
 class ResidualModel(ABC):
     @abstractmethod
-    def value_and_jacobian(y):
+    def value_and_jacobian(y: np.array):
         raise NotImplementedError
-
-    # @abstractmethod
-    # def evaluate(y):
-    #     raise NotImplementedError
-
-    # @abstractmethod
-    # def jacobian(y):
-    #     raise NotImplementedError

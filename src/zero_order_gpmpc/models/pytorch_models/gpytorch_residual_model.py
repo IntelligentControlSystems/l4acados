@@ -4,16 +4,20 @@ import gpytorch
 
 from .pytorch_feature_selector import FeatureSelector
 from .pytorch_residual_model import PyTorchResidualModel
+from .gpytorch_data_processing_strategy import DataProcessingStrategy, VoidDataStrategy
 
 import numpy as np
 import torch
 
 
 class GPyTorchResidualModel(PyTorchResidualModel):
-    """Basic gpytorch based GP residual model class.
+    """Gpytorch based GP residual model which offers strategies for data collection
+    and online learning.
 
     Args:
         - gp_model: A conditioned and trained instance of a gpytorch.models.ExactGP.
+        - data_processing_strategy: Specifies how the incoming data should be handled.
+          E.g. update the GP or saved to a file.
         - feature_selector: Optional feature selector if certain state dimensions are
           are known to be irrelevant for the GP inference. If set to None, then no selection
           is performed.
@@ -23,9 +27,11 @@ class GPyTorchResidualModel(PyTorchResidualModel):
         self,
         gp_model: gpytorch.models.ExactGP,
         feature_selector: Optional[FeatureSelector] = None,
+        data_processing_strategy: Optional[DataProcessingStrategy] = VoidDataStrategy,
     ):
         super().__init__(gp_model, feature_selector)
         self.gp_model = gp_model
+        self._data_processing_strategy = data_processing_strategy
 
     def _predictions_fun_sum(self, y):
         """Helper function for jacobian computation
@@ -59,3 +65,25 @@ class GPyTorchResidualModel(PyTorchResidualModel):
             self.current_variance = self.to_numpy(self.predictions.variance)
 
         return self.current_prediction
+
+    def record_datapoint(
+        self, x_input: np.array, y_target: np.array, timestamp: Optional[float] = None
+    ) -> None:
+        """Record one datapoint to the training dataset.
+
+        Args:
+            - x_input: (N, state_dim) input features
+            - y_target: (N, residual_dim) array of size nw with the targets we want to predict.
+        """
+
+        # Process datapoint and update model if needed
+        if (
+            updated_gp_model := self._data_processing_strategy.process(
+                gp_model=self.gp_model,
+                x_input=x_input,
+                y_target=y_target,
+                gp_feature_selector=self._feature_selector,
+                timestamp=timestamp,
+            )
+        ) is not None:
+            self.gp_model = updated_gp_model
