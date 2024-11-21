@@ -1,2 +1,2 @@
 from .residual_model import ResidualModel
-from . import gpytorch_models
+from . import pytorch_models

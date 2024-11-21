@@ -6,8 +6,9 @@ import numpy as np
 import torch
 import gpytorch
 
-from .gpytorch_residual_model import GPyTorchResidualModel, FeatureSelector
-from .gpytorch_utils import to_numpy, to_tensor
+from .pytorch_feature_selector import FeatureSelector
+from .gpytorch_residual_model import GPyTorchResidualModel
+from .pytorch_utils import to_numpy, to_tensor
 
 
 # Forward declaration
@@ -213,21 +214,7 @@ class GPyTorchResidualLearningModel(GPyTorchResidualModel):
     ) -> None:
 
         super().__init__(gp_model, gp_feature_selector)
-
         self._data_processing_strategy = data_processing_strategy
-
-        if verbose:
-            print(f"likelihood task noise:\n{self.gp_model.likelihood.task_noises}")
-            print(f"covar output scale:\n{self.gp_model.covar_module.outputscale}")
-            print(
-                f"covar length scale:\n{self.gp_model.covar_module.base_kernel.lengthscale}"
-            )
-            print(f"Input Selection:\n{self._gp_feature_selector}")
-
-            try:
-                print(f"Number of Datapoints: {self.gp_model.train_inputs[0].shape}")
-            except TypeError:
-                pass
 
     def record_datapoint(
         self, x_input: np.array, y_target: np.array, timestamp: Optional[float] = None
@@ -245,7 +232,7 @@ class GPyTorchResidualLearningModel(GPyTorchResidualModel):
                 gp_model=self.gp_model,
                 x_input=x_input,
                 y_target=y_target,
-                gp_feature_selector=self._gp_feature_selector,
+                gp_feature_selector=self._feature_selector,
                 timestamp=timestamp,
             )
         ) is not None:

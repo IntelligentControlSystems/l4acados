@@ -8,7 +8,7 @@ import torch
 import casadi as cs
 from zero_order_gpmpc.controllers.residual_learning_mpc import ResidualLearningMPC
 from zero_order_gpmpc.models import ResidualModel
-from zero_order_gpmpc.models.gpytorch_models.gpytorch_residual_model import (
+from zero_order_gpmpc.models.pytorch_models.pytorch_feature_selector import (
     FeatureSelector,
 )
 from zero_order_gpmpc.controllers.zoro_acados_utils import setup_sim_from_ocp
