@@ -22,6 +22,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+dev = [
+    "l4acados[test]",
+    "pre-commit",
+    "jupytext",
+]
 test = [
     "pytest",
 ]

@@ -15,8 +15,6 @@ from l4acados.controllers.zoro_acados_utils import setup_sim_from_ocp
 import argparse
 import os, shutil, re
 import subprocess
-import pympler
-from pympler import muppy, tracker
 
 
 class PyTorchResidualModel(ResidualModel):

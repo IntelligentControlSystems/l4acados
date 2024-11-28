@@ -4,39 +4,68 @@ Integrate learning-based Python models into acados for real-time model predictiv
 
 ## Installation
 
-1. `clone` this repository and initialize submodules with
+### Install `acados`
+
+1. Clone
     ```bash
-        git submodule update --recursive --init
+    git submodule update --recursive --init external/acados
+    ```
+1. Build the submodule `acados` according to the [installation instructions](https://docs.acados.org/installation/index.html):
+    ```bash
+    mkdir -p external/acados/build
+    cd external/acados/build
+    cmake -DACADOS_PYTHON=ON .. # do not forget the ".."
+    make install -j4
     ```
 
-2. Build the submodule `acados` according to the [installation instructions](https://docs.acados.org/installation/index.html):
+2. Install acados Python interface
     ```bash
-        mkdir -p external/acados/build
-        cd external/acados/build
-        cmake -DACADOS_PYTHON=ON .. # do not forget the ".."
-        make install -j4
-    ```
-
-3. Install acados
-    ```bash
-        pip install -e external/acados/interfaces/acados_template
+    pip install -e external/acados/interfaces/acados_template
     ```
 
 3. Set environment variables (where `$PROJECT_DIR` is the directory you cloned the repository into in Step 1):
     ```bash
-        export ACADOS_SOURCE_DIR=$PROJECT_DIR/external/acados
-        export LD_LIBRARY_PATH=$ACADOS_SOURCE_DIR/lib
+    export ACADOS_SOURCE_DIR=$PROJECT_DIR/external/acados
+    export LD_LIBRARY_PATH=$ACADOS_SOURCE_DIR/lib
     ```
 
-4. Test your installation by executing the example script
+### Install `L4acados` with optional dependencies of your choice
+
+Install `L4acados` with optional dependencies of your choice
+
+```bash
+pip install -e .[<optional-dependencies>]
+```
+
+Available options:
+- (without optional dependencies): Basic ResidualLearningMPC for custom implementations (e.g. Jacobian approximations, finite-difference approximations for e.g. models without sensitivity information)
+- `[pytorch]`: PyTorch models.
+- `[gpytorch]`: GPyTorch models.
+- `[online_gp]`: GpyTorch models with online-learning improvements.
+- not supported yet: JAX, TensorFlow
+
+
+## Contributing
+
+If you would like to contribute features to `L4acados`, please follow the development installation instructions below to set up your working environment.
+
+### Development installation
+
+1. Install `L4acados` with development dependencies (in addition to the used learning framework, see above):
+
     ```bash
-        cd examples/inverted_pendulum
-        python inverted_pendulum_residual_learning_zoro.py
+    pip install -e .[dev]
     ```
 
-## Examples
+2. Sync notebooks with jupytext:
+    ```bash
+    jupytext --set-formats ipynb,py examples/*/*.ipynb
+    ```
 
-You can find an example notebook of the zero-order GP-MPC method at `examples/inverted_pendulum/inverted_pendulum_zoro_acados.ipynb`.
+3. Add pre-commit hooks
+    ```bash
+    pre-commit install
+    ```
 
 ## Citing us
 
