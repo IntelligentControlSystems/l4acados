@@ -2,16 +2,16 @@ from acados import run, MultiLayerPerceptron, DoubleIntegratorWithLearnedDynamic
 import l4casadi as l4c
 import numpy as np
 import time
-import zero_order_gpmpc as zogp
+import l4acados as l4a
 from typing import Optional, Union
 import torch
 import casadi as cs
-from zero_order_gpmpc.controllers.residual_learning_mpc import ResidualLearningMPC
-from zero_order_gpmpc.models import ResidualModel
-from zero_order_gpmpc.models.pytorch_models.pytorch_feature_selector import (
+from l4acados.controllers.residual_learning_mpc import ResidualLearningMPC
+from l4acados.models import ResidualModel
+from l4acados.models.pytorch_models.pytorch_feature_selector import (
     FeatureSelector,
 )
-from zero_order_gpmpc.controllers.zoro_acados_utils import setup_sim_from_ocp
+from l4acados.controllers.zoro_acados_utils import setup_sim_from_ocp
 import argparse
 import os, shutil, re
 import subprocess

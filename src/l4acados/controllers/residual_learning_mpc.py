@@ -6,7 +6,7 @@ from .zoro_acados_utils import (
     setup_sim_from_ocp,
     get_solve_opts_from_ocp,
 )
-from zero_order_gpmpc.models import ResidualModel
+from l4acados.models import ResidualModel
 from typing import Tuple
 
 

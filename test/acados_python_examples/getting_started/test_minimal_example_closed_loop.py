@@ -29,7 +29,7 @@
 import numpy as np
 import scipy.linalg
 from casadi import vertcat
-from zero_order_gpmpc.controllers import ResidualLearningMPC
+from l4acados.controllers import ResidualLearningMPC
 import matplotlib.pyplot as plt
 from acados_template import AcadosOcp, AcadosOcpSolver, AcadosSimSolver
 

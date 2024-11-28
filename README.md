@@ -1,18 +1,8 @@
-# Zero-Order GP-MPC
+# L4acados
 
-An efficient implementation of a tailored SQP method for learning-based model predictive control with ellipsoidal uncertainties,
+Integrate learning-based Python models into acados for real-time model predictive control.
 
-- using the `acados` Python interface to solve the optimal control problems, and
-- employing `PyTorch` to evaluate Gaussian process dynamics models with support for GPU acceleration,
-- efficiently handling the optimization over the posterior covariances of the GP inside the optimizer,
-
-by modifying the Jacobians inside the SQP loop directly.
-
-## Background
-
-This software is built upon the results of the article "Zero-Order Optimization for Gaussian Process-based Model Predictive Control", published in the ECC 2023 Special Issue of the European Journal of Control (EJC), available at https://www.sciencedirect.com/science/article/pii/S0947358023000912. The code for the numerical experiments in the publication can be found [here](https://gitlab.ethz.ch/ics/zero-order-gp-mpc).
-
-## Installation instructions
+## Installation
 
 1. `clone` this repository and initialize submodules with
     ```bash
@@ -27,18 +17,18 @@ This software is built upon the results of the article "Zero-Order Optimization 
         make install -j4
     ```
 
+3. Install acados
+    ```bash
+        pip install -e external/acados/interfaces/acados_template
+    ```
+
 3. Set environment variables (where `$PROJECT_DIR` is the directory you cloned the repository into in Step 1):
     ```bash
         export ACADOS_SOURCE_DIR=$PROJECT_DIR/external/acados
         export LD_LIBRARY_PATH=$ACADOS_SOURCE_DIR/lib
     ```
 
-4. Create virtual environment and install Python dependencies (Python version 3.9.13):
-    ```bash
-        pip install -r requirements.txt
-    ```
-
-5. Test your installation by executing the example script
+4. Test your installation by executing the example script
     ```bash
         cd examples/inverted_pendulum
         python inverted_pendulum_residual_learning_zoro.py

@@ -6,17 +6,17 @@ import numpy as np
 import torch
 import gpytorch
 
-from zero_order_gpmpc.models.pytorch_models.pytorch_feature_selector import (
+from l4acados.models.pytorch_models.pytorch_feature_selector import (
     FeatureSelector,
 )
-from zero_order_gpmpc.models.pytorch_models.gpytorch_residual_model import (
+from l4acados.models.pytorch_models.gpytorch_residual_model import (
     GPyTorchResidualModel,
 )
-from zero_order_gpmpc.models.pytorch_models.gpytorch_data_processing_strategy import (
+from l4acados.models.pytorch_models.gpytorch_data_processing_strategy import (
     OnlineLearningStrategy,
     RecordDataStrategy,
 )
-from zero_order_gpmpc.models.pytorch_models import gpytorch_gp
+from l4acados.models.pytorch_models import gpytorch_gp
 
 
 def count_lines(filepath: str) -> int:

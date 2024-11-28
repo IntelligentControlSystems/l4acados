@@ -21,7 +21,7 @@ sys.path += ["../../external/"]
 # %% metadata={}
 # %load_ext autoreload
 # %autoreload 1
-# %aimport zero_order_gpmpc
+# %aimport l4acados
 
 # %% metadata={}
 import numpy as np
@@ -41,11 +41,11 @@ import gpytorch
 import copy
 
 # zoRO imports
-import zero_order_gpmpc
-from zero_order_gpmpc.controllers import (
+import l4acados
+from l4acados.controllers import (
     ZeroOrderGPMPC,
 )
-from zero_order_gpmpc.controllers.zoro_acados_utils import setup_sim_from_ocp
+from l4acados.controllers.zoro_acados_utils import setup_sim_from_ocp
 from inverted_pendulum_model_acados import (
     export_simplependulum_ode_model,
     export_ocp_nominal,
@@ -64,7 +64,7 @@ from gpytorch_utils.gp_utils import (
     plot_gp_data,
     generate_grid_points,
 )
-from zero_order_gpmpc.models.pytorch_models.gpytorch_gp import (
+from l4acados.models.pytorch_models.gpytorch_gp import (
     BatchIndependentMultitaskGPModel,
 )
 
@@ -334,7 +334,7 @@ plt.draw()
 # # Residual-Model MPC
 
 # %% metadata={}
-from zero_order_gpmpc.models.pytorch_models.gpytorch_residual_model import (
+from l4acados.models.pytorch_models.gpytorch_residual_model import (
     GPyTorchResidualModel,
 )
 

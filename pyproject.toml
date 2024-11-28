@@ -1,11 +1,11 @@
 [project]
-name = "zero_order_gpmpc"
+name = "l4acados"
 version = "0.0.1"
 authors = [
     { name="Amon Lahr", email="amlahr@ethz.ch" },
     { name="Joshua Näf", email="joshua.naef@ethz.ch" },
 ]
-description = "A tailored SQP algorithm for learning-based model predictive control with ellipsoidal uncertainties"
+description = "Learning-based models for acados"
 readme = "README.md"
 requires-python = ">=3.8"
 classifiers = [

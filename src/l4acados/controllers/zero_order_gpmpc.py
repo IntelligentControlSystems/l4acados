@@ -1,7 +1,7 @@
 import numpy as np
 from .zoro_acados_utils import *
 from .residual_learning_mpc import ResidualLearningMPC
-from zero_order_gpmpc.models import ResidualModel
+from l4acados.models import ResidualModel
 from acados_template import AcadosOcp
 
 
