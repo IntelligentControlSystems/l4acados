@@ -5,35 +5,15 @@ N_arr = [int(i) for i in np.ceil(np.logspace(0, 3, 10))]
 batch_dim = 1
 hidden_layers_arr = [1, 10, 20]
 solve_steps = 1000
-# device_arr = ["cpu", "cpu", "cuda", "cpu", "cuda"]
-# num_threads_arr = [1, 10, 1, 1, 1]
-# num_threads_acados_openmp_arr = [0, 0, 0, 10, 10]
-
-# first device_arr again
-device_arr = ["cpu"]
-num_threads_arr = [1]
-num_threads_acados_openmp_arr = [0]
-
-# just N=1000 for first device_arr
-# N_arr = [N_arr[-1]]
-# device_arr = ["cpu"]
-# num_threads_arr = [1]
-# num_threads_acados_openmp_arr = [0]
-# TODO: missing data here: with 10,20 hidden layers
-
-# all other device_arr
-# device_arr = ["cpu", "cuda", "cpu", "cuda"]
-# num_threads_arr = [10, 1, 1, 1]
-# num_threads_acados_openmp_arr = [0, 0, 10, 10]
-
+device_arr = ["cpu", "cpu", "cuda", "cpu", "cuda"]
+num_threads_arr = [1, 10, 1, 1, 1]
+num_threads_acados_openmp_arr = [0, 0, 0, 10, 10]
+save_data = True
 
 assert len(num_threads_arr) == len(device_arr) == len(num_threads_acados_openmp_arr)
 device_threads_arr = list(
     zip(device_arr, num_threads_arr, num_threads_acados_openmp_arr)
 )
-
-save_data = True
-
 
 print(
     f"Running experiments with\nN={N_arr}\nhidden_layers={hidden_layers_arr}\ndevices={device_arr}\nnum_threads_torch={num_threads_arr}\nnum_threads_acados={num_threads_acados_openmp_arr}"

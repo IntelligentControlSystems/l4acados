@@ -1,6 +1,18 @@
 # See https://pre-commit.com for more information
 # See https://pre-commit.com/hooks.html for more hooks
 repos:
+-   repo: https://github.com/mwouts/jupytext
+    rev: v1.16.4 # CURRENT_TAG/COMMIT_HASH
+    hooks:
+    - id: jupytext
+      # args: [--sync, --pipe, black]
+      args: [--sync]
+      additional_dependencies:
+        - black==24.3.0 # Matches hook
+- repo: https://github.com/psf/black-pre-commit-mirror
+  rev: 24.3.0
+  hooks:
+  - id: black
 -   repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.6.0
     hooks:
@@ -9,7 +21,3 @@ repos:
     -   id: check-yaml
     -   id: mixed-line-ending
         args: [-f, lf]
-- repo: https://github.com/psf/black-pre-commit-mirror
-  rev: 24.3.0
-  hooks:
-  - id: black
