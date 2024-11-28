@@ -1,11 +1,11 @@
 import torch
 from typing import Optional
 
-from zero_order_gpmpc.models import ResidualModel
-from zero_order_gpmpc.models.pytorch_models.pytorch_feature_selector import (
+from l4acados.models import ResidualModel
+from l4acados.models.pytorch_models.pytorch_feature_selector import (
     FeatureSelector,
 )
-from zero_order_gpmpc.models.pytorch_models.pytorch_utils import to_numpy, to_tensor
+from l4acados.models.pytorch_models.pytorch_utils import to_numpy, to_tensor
 
 
 class PyTorchResidualModel(ResidualModel):
