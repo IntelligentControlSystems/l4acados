@@ -1,13 +1,11 @@
 from typing import Optional
+import numpy as np
 import torch
 import gpytorch
 
-from .pytorch_feature_selector import FeatureSelector
-from .pytorch_residual_model import PyTorchResidualModel
+from ..pytorch_feature_selector import PyTorchFeatureSelector
+from ..pytorch_residual_model import PyTorchResidualModel
 from .gpytorch_data_processing_strategy import DataProcessingStrategy, VoidDataStrategy
-
-import numpy as np
-import torch
 
 
 class GPyTorchResidualModel(PyTorchResidualModel):
@@ -26,7 +24,7 @@ class GPyTorchResidualModel(PyTorchResidualModel):
     def __init__(
         self,
         gp_model: gpytorch.models.ExactGP,
-        feature_selector: Optional[FeatureSelector] = None,
+        feature_selector: Optional[PyTorchFeatureSelector] = None,
         data_processing_strategy: Optional[DataProcessingStrategy] = VoidDataStrategy,
     ):
         super().__init__(gp_model, feature_selector)

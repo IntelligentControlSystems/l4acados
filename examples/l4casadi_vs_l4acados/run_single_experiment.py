@@ -6,11 +6,8 @@ import l4acados as l4a
 from typing import Optional, Union
 import torch
 import casadi as cs
-from l4acados.controllers.residual_learning_mpc import ResidualLearningMPC
-from l4acados.models import ResidualModel
-from l4acados.models.pytorch_models.pytorch_feature_selector import (
-    FeatureSelector,
-)
+from l4acados.controllers import ResidualLearningMPC
+from l4acados.models import ResidualModel, PyTorchResidualModel, PyTorchFeatureSelector
 from l4acados.controllers.zoro_acados_utils import setup_sim_from_ocp
 import argparse
 import os, shutil, re
@@ -29,13 +26,15 @@ class PyTorchResidualModel(ResidualModel):
     def __init__(
         self,
         model: torch.nn.Module,
-        feature_selector: Optional[FeatureSelector] = None,
+        feature_selector: Optional[PyTorchFeatureSelector] = None,
         device="cpu",
     ):
         self.model = model
 
         self._gp_feature_selector = (
-            feature_selector if feature_selector is not None else FeatureSelector()
+            feature_selector
+            if feature_selector is not None
+            else PyTorchFeatureSelector()
         )
 
         if device == "cuda":
@@ -136,7 +135,7 @@ def init_l4acados(
     use_cython=False,
     num_threads_acados_openmp=1,
 ):
-    feature_selector = FeatureSelector([1, 1, 0], device=device)
+    feature_selector = PyTorchFeatureSelector([1, 1, 0], device=device)
     residual_model = PyTorchResidualModel(
         MultiLayerPerceptron(hidden_layers=hidden_layers),
         feature_selector,

@@ -41,7 +41,7 @@ Available options:
 - (without optional dependencies): Basic ResidualLearningMPC for custom implementations (e.g. Jacobian approximations, finite-difference approximations for e.g. models without sensitivity information)
 - `[pytorch]`: PyTorch models.
 - `[gpytorch]`: GPyTorch models.
-- `[online_gp]`: GpyTorch models with online-learning improvements.
+- `[gpytorch-exo]`: GpyTorch models with online-learning improvements.
 - not supported yet: JAX, TensorFlow
 
 
@@ -69,7 +69,24 @@ If you would like to contribute features to `L4acados`, please follow the develo
 
 ## Citing us
 
-If you use this software, please cite our corresponding article as written below.
+If you use this software, please cite our corresponding articles as written below.
+
+### General software
+
+```
+@online{lahr_l4acados_2024,
+  title = {L4acados: {{Learning-based}} Models for Acados, Applied to {{Gaussian}} Process-Based Predictive Control},
+  shorttitle = {L4acados},
+  author = {Lahr, Amon and Näf, Joshua and Wabersich, Kim P. and Frey, Jonathan and Siehl, Pascal and Carron, Andrea and Diehl, Moritz and Zeilinger, Melanie N.},
+  date = {2024-11-28},
+  eprint = {2411.19258},
+  eprinttype = {arXiv},
+  doi = {10.48550/arXiv.2411.19258},
+  pubstate = {prepublished}
+}
+```
+
+### Zero-Order GP-MPC algorithm
 
 ```
 @article{lahr_zero-order_2023,

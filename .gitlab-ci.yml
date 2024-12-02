@@ -32,8 +32,9 @@ stages:
     - pip install . --no-build-isolation || exit 1
     # l4acados
     - cd $CI_PROJECT_DIR
-    - pip install -r requirements.txt || exit 1
-    - pip install pytest || exit 1
+    - pip install -e ./external/acados/interfaces/acados_template || exit 1
+    - pip install -e .[test] --no-build-isolation || exit 1
+    - pip install -e .[gpytorch-exo] || exit 1
   variables:
     PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
     VENV_DIR: "$CI_PROJECT_DIR/.venv_$PYTHON_VERSION"

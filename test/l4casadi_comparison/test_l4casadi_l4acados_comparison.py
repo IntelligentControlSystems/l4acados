@@ -5,11 +5,8 @@ import l4acados as l4a
 from typing import Optional, Union
 import torch
 import casadi as cs
-from l4acados.controllers.residual_learning_mpc import ResidualLearningMPC
-from l4acados.models.pytorch_models import PyTorchResidualModel
-from l4acados.models.pytorch_models.pytorch_feature_selector import (
-    FeatureSelector,
-)
+from l4acados.controllers import ResidualLearningMPC
+from l4acados.models import PyTorchFeatureSelector, PyTorchResidualModel
 from l4acados.controllers.zoro_acados_utils import setup_sim_from_ocp
 import argparse
 import os, shutil, re
@@ -56,7 +53,7 @@ def init_l4acados(
     device="cpu",
     use_cython=False,
 ):
-    feature_selector = FeatureSelector([1, 0, 0], device=device)
+    feature_selector = PyTorchFeatureSelector([1, 0, 0], device=device)
     residual_model = PyTorchResidualModel(
         nn_model,
         feature_selector,

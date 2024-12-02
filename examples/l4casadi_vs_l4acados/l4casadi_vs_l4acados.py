@@ -1,14 +1,13 @@
 # ---
 # jupyter:
 #   jupytext:
-#     formats: ipynb,py
 #     text_representation:
 #       extension: .py
 #       format_name: light
 #       format_version: '1.5'
 #       jupytext_version: 1.16.4
 #   kernelspec:
-#     display_name: l4acados_dev
+#     display_name: zero-order-gpmpc-package-3.10
 #     language: python
 #     name: python3
 # ---
@@ -30,10 +29,7 @@ import torch
 import casadi as cs
 
 from l4acados.controllers.residual_learning_mpc import ResidualLearningMPC
-from l4acados.models import ResidualModel
-from l4acados.models.pytorch_models.pytorch_feature_selector import (
-    FeatureSelector,
-)
+from l4acados.models import ResidualModel, PyTorchFeatureSelector
 from l4acados.controllers.zoro_acados_utils import setup_sim_from_ocp
 
 import copy
