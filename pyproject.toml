@@ -14,21 +14,30 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
-    "linear_operator @ git+https://github.com/naefjo/linear_operator@feature/exo-gp",
-    "gpytorch @ git+https://github.com/naefjo/gpytorch@feature/exo-gp",
     "casadi",
     "scipy",
     "numpy",
 ]
 
 [project.optional-dependencies]
+pytorch = [
+    "torch",
+]
+gpytorch = [
+    "gpytorch",
+]
+gpytorch-exo = [
+    "linear_operator @ git+https://github.com/naefjo/linear_operator@feature/exo-gp",
+    "gpytorch @ git+https://github.com/naefjo/gpytorch@feature/exo-gp",
+]
+test = [
+    "pytest",
+    "l4casadi",
+]
 dev = [
     "l4acados[test]",
     "pre-commit",
     "jupytext",
-]
-test = [
-    "pytest",
 ]
 
 [build-system]

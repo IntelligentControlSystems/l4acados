@@ -6,17 +6,12 @@ import numpy as np
 import torch
 import gpytorch
 
-from l4acados.models.pytorch_models.pytorch_feature_selector import (
-    FeatureSelector,
-)
-from l4acados.models.pytorch_models.gpytorch_residual_model import (
-    GPyTorchResidualModel,
-)
-from l4acados.models.pytorch_models.gpytorch_data_processing_strategy import (
+from l4acados.models import PyTorchFeatureSelector, GPyTorchResidualModel
+from l4acados.models.pytorch_models.gpytorch_models.gpytorch_data_processing_strategy import (
     OnlineLearningStrategy,
     RecordDataStrategy,
 )
-from l4acados.models.pytorch_models import gpytorch_gp
+from l4acados.models.pytorch_models.gpytorch_models import gpytorch_gp
 
 
 def count_lines(filepath: str) -> int:
@@ -64,7 +59,7 @@ def test_unconditioned_gp(num_tests: int = 6) -> None:
             }
         )
 
-        input_selection = FeatureSelector(input_feature_selection)
+        input_selection = PyTorchFeatureSelector(input_feature_selection)
 
         gpytorch_gp_model = gpytorch_gp.BatchIndependentMultitaskGPModel(
             train_x=None,
@@ -264,7 +259,7 @@ def test_load_gp_from_file(num_tests: int = 6) -> None:
             f"{train_x_tensor.shape} {train_y_tensor.shape}"
         )
 
-        input_selection = FeatureSelector(input_feature_selection)
+        input_selection = PyTorchFeatureSelector(input_feature_selection)
 
         gpytorch_model = gpytorch_gp.BatchIndependentMultitaskGPModel(
             input_selection(train_x_tensor),
@@ -350,7 +345,7 @@ def test_incorporate_new_data(num_tests: int = 6):
             "covar_module.outputscale": torch.rand(residual_dimension) + 1e-4,
         }
 
-        input_selection = FeatureSelector(input_feature_selection)
+        input_selection = PyTorchFeatureSelector(input_feature_selection)
 
         gpytorch_gp_model = gpytorch_gp.BatchIndependentMultitaskGPModel(
             train_x=None,
@@ -529,7 +524,7 @@ def test_inducing_point_gp_from_file(num_tests: int = 6) -> None:
             f"{train_x_tensor.shape} {train_y_tensor.shape}"
         )
 
-        input_selection = FeatureSelector(input_feature_selection)
+        input_selection = PyTorchFeatureSelector(input_feature_selection)
 
         gpytorch_model = gpytorch_gp.BatchIndependentInducingPointGpModel(
             input_selection(train_x_tensor),

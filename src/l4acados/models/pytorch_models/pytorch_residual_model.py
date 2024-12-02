@@ -3,7 +3,7 @@ from typing import Optional
 
 from l4acados.models import ResidualModel
 from l4acados.models.pytorch_models.pytorch_feature_selector import (
-    FeatureSelector,
+    PyTorchFeatureSelector,
 )
 from l4acados.models.pytorch_models.pytorch_utils import to_numpy, to_tensor
 
@@ -20,11 +20,13 @@ class PyTorchResidualModel(ResidualModel):
     def __init__(
         self,
         model: torch.nn.Module,
-        feature_selector: Optional[FeatureSelector] = None,
+        feature_selector: Optional[PyTorchFeatureSelector] = None,
     ):
         self.model = model
         self._feature_selector = (
-            feature_selector if feature_selector is not None else FeatureSelector()
+            feature_selector
+            if feature_selector is not None
+            else PyTorchFeatureSelector()
         )
         self.device = next(model.parameters()).device
         self.to_numpy = lambda T: to_numpy(T, self.device.type)

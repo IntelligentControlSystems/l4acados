@@ -1,2 +1,3 @@
 from .residual_model import ResidualModel
-from . import pytorch_models
+from .pytorch_models import PyTorchFeatureSelector, PyTorchResidualModel
+from .pytorch_models.gpytorch_models import GPyTorchResidualModel

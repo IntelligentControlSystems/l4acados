@@ -5,9 +5,10 @@ from typing import Optional
 import numpy as np
 import torch
 import gpytorch
+import linear_operator
 
-from .pytorch_feature_selector import FeatureSelector
-from .pytorch_utils import to_numpy, to_tensor
+from ..pytorch_feature_selector import PyTorchFeatureSelector
+from ..pytorch_utils import to_numpy, to_tensor
 
 
 class DataProcessingStrategy(ABC):
@@ -24,7 +25,7 @@ class DataProcessingStrategy(ABC):
         gp_model: gpytorch.models.ExactGP,
         x_input: np.array,
         y_target: np.array,
-        gp_feature_selector: FeatureSelector,
+        gp_feature_selector: PyTorchFeatureSelector,
         timestamp: Optional[float],
     ) -> Optional[gpytorch.models.ExactGP]:
         """Function which is processed in the `record_datapoint` method of `ResidualGaussianProcess`
@@ -45,7 +46,7 @@ class VoidDataStrategy(DataProcessingStrategy):
         gp_model: gpytorch.models.ExactGP,
         x_input: np.array,
         y_target: np.array,
-        gp_feature_selector: FeatureSelector,
+        gp_feature_selector: PyTorchFeatureSelector,
         timestamp: Optional[float],
     ) -> Optional[gpytorch.models.ExactGP]:
         pass
@@ -75,7 +76,7 @@ class RecordDataStrategy(DataProcessingStrategy):
         gp_model: gpytorch.models.ExactGP,
         x_input: np.array,
         y_target: np.array,
-        gp_feature_selector: FeatureSelector,
+        gp_feature_selector: PyTorchFeatureSelector,
         timestamp: Optional[float],
     ) -> Optional[gpytorch.models.ExactGP]:
         self._gp_training_data["x_training_data"].append(x_input)
@@ -113,6 +114,7 @@ class OnlineLearningStrategy(DataProcessingStrategy):
     """Implements an online learning strategy.
 
     The received data is incorporated in the GP and used for further predictions.
+    This data processing strategy depends on the [online_gp] optional dependencies (see pyproject.toml).
     """
 
     def __init__(self, max_num_points: int = 200, device: str = "cpu") -> None:
@@ -124,7 +126,7 @@ class OnlineLearningStrategy(DataProcessingStrategy):
         gp_model: gpytorch.models.ExactGP,
         x_input: np.array,
         y_target: np.array,
-        gp_feature_selector: FeatureSelector,
+        gp_feature_selector: PyTorchFeatureSelector,
         timestamp: Optional[float],
     ) -> Optional[gpytorch.models.ExactGP]:
 
@@ -166,13 +168,20 @@ class OnlineLearningStrategy(DataProcessingStrategy):
                     0, self.max_num_points, torch.Size(), requires_grad=False
                 ).item()
                 selector[drop_idx] = 0
-
                 # Calculate fantasy model with data selector
-                fantasy_model = gp_model.get_fantasy_model(
-                    gp_feature_selector(x_input),
-                    y_target,
-                    data_selector=selector,
-                )
+                try:
+                    fantasy_model = gp_model.get_fantasy_model(
+                        gp_feature_selector(x_input),
+                        y_target,
+                        data_selector=selector,
+                    )
+                except TypeError as err:
+                    # check if error message contains data_selector
+                    if "data_selector" in str(err):
+                        raise ImportError(
+                            "OnlineLearningStrategy requires the [online_gp] optional dependencies (see pyproject.toml)."
+                        )
+                    raise err
 
                 return fantasy_model
 

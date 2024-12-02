@@ -1,2 +1,0 @@
--e ./external/acados/interfaces/acados_template
--e ./
