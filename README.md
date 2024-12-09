@@ -2,6 +2,39 @@
 
 Integrate learning-based Python models into acados for real-time model predictive control.
 
+## Usage
+
+1. Define your [`AcadosOcp`](https://docs.acados.org/python_interface/index.html#acados_template.acados_ocp.AcadosOcp), including the nominal dynamics model
+    ```python
+    from acados_template import AcadosOcp
+    ocp = AcadosOcp()
+    # ...
+    ```
+
+2. Define the residual model using the `L4acados` `ResidualModel` (here as a [PyTorchResidualModel](https://github.com/IntelligentControlSystems/l4acados/blob/main/src/l4acados/models/pytorch_models/pytorch_residual_model.py) example):
+    ```python
+    import l4acados as l4a
+    residual_model = l4a.PyTorchResidualModel(your_pytorch_model)
+    ```
+
+    > [Other models](https://github.com/IntelligentControlSystems/l4acados/tree/main/src/l4acados/models) can be straightforwardly implemented using as a [`ResidualModel`](https://github.com/IntelligentControlSystems/l4acados/blob/main/src/l4acados/models/residual_model.py) instance; see [here](https://github.com/IntelligentControlSystems/l4acados?tab=readme-ov-file#install-l4acados-with-optional-dependencies-of-your-choice) for already available residual models.
+
+3. Generate the `L4acados` solver object
+    ```python
+    l4acados_solver = l4a.ResidualLearningMPC(
+        ocp=ocp,
+        residual_model=residual_model,
+        use_cython=True, # accelerate get/set operations by using the acados Cython interface
+    )
+    ```
+
+4. Done! The `ResidualLearningMPC` object can be interfaced like the `AcadosOcpSolver`:
+    - `l4acados_solver.set(...)`
+    - `l4acados_solver.solve()`
+    - `l4acados_solver.get(...)`
+    > Not all solver interface functions are mapped by the `ResidualLearningMPC`. You can still access the underlying `AcadosOcpSolver` object through the `l4acados_solver.ocp_solver` property. Besides the dynamics model and parameter definition, the `l4acados_solver.ocp_solver` is equivalent to the `acados_solver.ocp_solver` generated from the original `ocp`.
+
+
 ## Installation
 
 ### Install `acados`
@@ -17,6 +50,8 @@ Integrate learning-based Python models into acados for real-time model predictiv
     cmake -DACADOS_PYTHON=ON .. # do not forget the ".."
     make install -j4
     ```
+
+    > You can also install `acados` separately; in this case, refer to the acados version of the submodule in case you encounter errors with a newer version of `acados`.
 
 2. Install acados Python interface
     ```bash
