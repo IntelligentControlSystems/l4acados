@@ -1,4 +1,5 @@
-# L4acados
+# L4acados: Learning-based models for `acados`
+> Paper: https://arxiv.org/abs/2411.19258
 
 Integrate learning-based Python models into acados for real-time model predictive control.
 
