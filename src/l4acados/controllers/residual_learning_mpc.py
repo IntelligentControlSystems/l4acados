@@ -18,12 +18,12 @@ class ResidualLearningMPC:
         residual_model: ResidualModel = None,
         build_c_code: bool = True,
         use_cython: bool = True,
+        use_ocp_model: bool = True,
         path_json_ocp: str = "residual_lbmpc_ocp_solver_config.json",
         path_json_sim: str = "residual_lbmpc_sim_solver_config.json",
     ) -> None:
         """
         ocp: AcadosOcp for nominal problem
-        sim: AcadosSim for nominal model
         B: Residual Jacobian mapping from resiudal dimension to state dimension. If None,
             it is assumed that redsidual_dim == state_dim
         residual_model: ResidualModel class
@@ -32,6 +32,7 @@ class ResidualLearningMPC:
         The following args only apply if build_c_code == True:
         use_cython: Whether Acados' cython solver interface should be used. You probably
             want this enabled.
+        use_ocp_model: Whether the OCP model should be used as the nominal model. If set to false, no nominal model will be used.
         path_json_ocp: Name of the json file where the resulting ocp will be dumped
         path_json_sim: Name of the json file where the resulting sim will be dumped
         """
@@ -45,7 +46,6 @@ class ResidualLearningMPC:
 
         # transform OCP to linear-params-model
         self.ocp, self.ocp_opts = transform_ocp(ocp, use_cython)
-        self.sim = setup_sim_from_ocp(ocp)
         self.ocp_opts_tol_arr = np.array(
             [
                 self.ocp_opts["nlp_solver_tol_stat"],
@@ -67,13 +67,14 @@ class ResidualLearningMPC:
         self.x_hat_all = np.zeros((self.N + 1, self.nx))
         self.u_hat_all = np.zeros((self.N, self.nu))
         self.y_hat_all = np.zeros((self.N, self.nx + self.nu))
-
-        self.residual_fun = np.zeros((self.N, self.nw))
-        self.residual_jac = np.zeros((self.nw, self.N, self.nx + self.nu))
         self.p_hat_nonlin = np.array([ocp.parameter_values for _ in range(self.N + 1)])
         self.p_hat_linmdl = np.array(
             [self.ocp.parameter_values for _ in range(self.N + 1)]
         )
+        self.nominal_fun = np.zeros((self.N, self.nx))
+        self.nominal_jac = np.zeros((self.N, self.nx, self.nx + self.nu))
+        self.residual_fun = np.zeros((self.N, self.nw))
+        self.residual_jac = np.zeros((self.nw, self.N, self.nx + self.nu))
         self.nlp_residuals = np.zeros((self.ocp_opts["nlp_solver_max_iter"], 4))
         self.num_iter = 0
 
@@ -81,6 +82,11 @@ class ResidualLearningMPC:
         if residual_model is not None:
             self.has_residual_model = True
             self.residual_model = residual_model
+
+        self.sim = None
+        self.has_nominal_model = use_ocp_model
+        if self.has_nominal_model:
+            self.sim = setup_sim_from_ocp(ocp)
 
         self.build(
             use_cython=use_cython,
@@ -113,14 +119,19 @@ class ResidualLearningMPC:
             if build_c_code:
                 AcadosOcpSolver.generate(self.ocp, json_file=path_json_ocp)
                 AcadosOcpSolver.build(self.ocp.code_export_directory, with_cython=True)
-                AcadosSimSolver.generate(self.sim, json_file=path_json_sim)
-                AcadosSimSolver.build(self.sim.code_export_directory, with_cython=True)
-
             self.ocp_solver = AcadosOcpSolver.create_cython_solver(path_json_ocp)
-            self.sim_solver = AcadosSimSolver.create_cython_solver(path_json_sim)
+
+            if self.has_nominal_model:
+                if build_c_code:
+                    AcadosSimSolver.generate(self.sim, json_file=path_json_sim)
+                    AcadosSimSolver.build(
+                        self.sim.code_export_directory, with_cython=True
+                    )
+                self.sim_solver = AcadosSimSolver.create_cython_solver(path_json_sim)
         else:
             self.ocp_solver = AcadosOcpSolver(self.ocp, json_file=path_json_ocp)
-            self.sim_solver = AcadosSimSolver(self.sim, json_file=path_json_sim)
+            if self.has_nominal_model:
+                self.sim_solver = AcadosSimSolver(self.sim, json_file=path_json_sim)
 
     def solve(self, acados_sqp_mode=False):
         status_feed = 0
@@ -176,26 +187,32 @@ class ResidualLearningMPC:
 
         # ------------------- Update stages --------------------
         for stage in range(self.N):
-            # set parameters (linear matrices and offset)
-            # ------------------- Integrate --------------------
-            self.sim_solver.set("x", self.x_hat_all[stage, :])
-            self.sim_solver.set("u", self.u_hat_all[stage, :])
-            self.sim_solver.set("p", self.p_hat_nonlin[stage, :])
-            status_integrator = self.sim_solver.solve()
+            if self.has_nominal_model:
+                # set parameters (linear matrices and offset)
+                # ------------------- Integrate --------------------
+                self.sim_solver.set("x", self.x_hat_all[stage, :])
+                self.sim_solver.set("u", self.u_hat_all[stage, :])
+                self.sim_solver.set("p", self.p_hat_nonlin[stage, :])
+                status_integrator = self.sim_solver.solve()
 
-            A_nom = self.sim_solver.get("Sx")
-            B_nom = self.sim_solver.get("Su")
-            x_nom = self.sim_solver.get("x")
+                self.nominal_fun[stage, :] = self.sim_solver.get("x")
+                self.nominal_jac[stage, :, 0 : self.nx] = self.sim_solver.get("Sx")
+                self.nominal_jac[stage, :, self.nx : self.nx + self.nu] = (
+                    self.sim_solver.get("Su")
+                )
 
             # ------------------- Build linear model --------------------
-            A_total = A_nom + self.B @ self.residual_jac[:, stage, 0 : self.nx]
+            A_total = (
+                self.nominal_jac[stage, :, 0 : self.nx]
+                + self.B @ self.residual_jac[:, stage, 0 : self.nx]
+            )
             B_total = (
-                B_nom
+                self.nominal_jac[stage, :, self.nx : self.nx + self.nu]
                 + self.B @ self.residual_jac[:, stage, self.nx : self.nx + self.nu]
             )
 
             f_hat = (
-                x_nom
+                self.nominal_fun[stage, :]
                 + self.B @ self.residual_fun[stage, :]
                 - A_total @ self.x_hat_all[stage, :]
                 - B_total @ self.u_hat_all[stage, :]
