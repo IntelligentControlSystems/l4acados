@@ -113,3 +113,4 @@ run tests:
   extends: .pytest_job
   script:
     - pytest --ignore external/
+  resource_group: l4acados_tests
