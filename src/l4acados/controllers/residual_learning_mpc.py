@@ -19,6 +19,7 @@ class ResidualLearningMPC:
         build_c_code: bool = True,
         use_cython: bool = True,
         use_ocp_model: bool = True,
+        ignore_support_errors: bool = False,
         path_json_ocp: str = "residual_lbmpc_ocp_solver_config.json",
         path_json_sim: str = "residual_lbmpc_sim_solver_config.json",
     ) -> None:
@@ -45,7 +46,9 @@ class ResidualLearningMPC:
         self.B = B
 
         # transform OCP to linear-params-model
-        self.ocp, self.ocp_opts = transform_ocp(ocp, use_cython)
+        self.ocp, self.ocp_opts = transform_ocp(
+            ocp, use_cython, ignore_errors=ignore_support_errors
+        )
         self.ocp_opts_tol_arr = np.array(
             [
                 self.ocp_opts["nlp_solver_tol_stat"],
