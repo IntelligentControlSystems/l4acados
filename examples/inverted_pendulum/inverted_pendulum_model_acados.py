@@ -153,12 +153,13 @@ def export_ocp_nominal(N, T, ocp_opts=None, only_lower_bounds=False, **model_kwa
     ocp.solver_options.hessian_approx = "GAUSS_NEWTON"
     # ocp.solver_options.hessian_approx = 'EXACT'
 
-    ocp.solver_options.nlp_solver_type = "SQP_RTI"
+    ocp.solver_options.nlp_solver_type = "SQP"
+    ocp.solver_options.nlp_solver_max_iter = 50
     # ocp.solver_options.nlp_solver_type = 'SQP' # , SQP_RTI
 
     ocp.solver_options.tf = T
     ocp.solver_options.Tsim = T / N
 
-    ocp.solver_options.tol = 1e-5
+    ocp.solver_options.tol = 1e-4
 
     return ocp
