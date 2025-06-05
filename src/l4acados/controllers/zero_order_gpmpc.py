@@ -29,26 +29,9 @@ class ZeroOrderGPMPC(ResidualLearningMPC):
             build_c_code=build_c_code,
         )
 
-    def solve(self):
-        for i in range(self.ocp_opts["nlp_solver_max_iter"]):
-            self.preparation()
-            status_cupd = self.do_custom_update()
-            status_feed = self.feedback()
-
-            # ------------------- Check termination --------------------
-            # check on residuals and terminate loop.
-            residuals = self.ocp_solver.get_residuals()
-            print("residuals after ", i, "SQP_RTI iterations:\n", residuals)
-
-            if status_feed != 0:
-                raise Exception(
-                    "acados self.ocp_solver returned status {} in time step {}. Exiting.".format(
-                        status_feed, i
-                    )
-                )
-
-            if np.all(residuals < self.ocp_opts_tol_arr):
-                break
+    def preparation(self):
+        super().preparation()
+        self.do_custom_update()
 
     def setup_custom_update(self, ocp):
         template_c_file = "custom_update_function_zoro_template.in.c"

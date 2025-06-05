@@ -24,6 +24,7 @@ stages:
     - python --version ; pip --version  # For debugging
     - python -m venv $VENV_DIR
     - source "$VENV_DIR/bin/activate" || exit 1
+    - pip list # For debugging
     # l4casadi
     - cd $CI_PROJECT_DIR && git submodule update --recursive --init external/l4casadi || exit 1
     - cd $CI_PROJECT_DIR/external/l4casadi

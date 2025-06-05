@@ -385,7 +385,7 @@ for i in range(N):
     residual_mpc.ocp_solver.set(i, "u", U_init[i, :])
 residual_mpc.ocp_solver.set(N, "x", X_init[N, :])
 
-residual_mpc.solve()
+residual_mpc.solve(acados_sqp_mode=True)
 X_res, U_res = residual_mpc.get_solution()
 P_res_arr = residual_mpc.covariances_array
 
@@ -416,3 +416,13 @@ add_plot_trajectory(
 )
 add_plot_trajectory(ax, plot_data_res_sim, color_fun=plt.cm.Oranges)
 # --
+
+residual_mpc.print_statistics()
+
+residual_mpc.get_stats("res_stat_all")
+
+residual_mpc.get_stats("residuals")
+
+residual_mpc.get_stats("time_preparation_all"), residual_mpc.get_stats(
+    "time_preparation"
+)

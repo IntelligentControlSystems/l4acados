@@ -8,6 +8,7 @@ from .zoro_acados_utils import (
 )
 from l4acados.models import ResidualModel
 from typing import Tuple
+from time import perf_counter
 
 
 class ResidualLearningMPC:
@@ -79,6 +80,11 @@ class ResidualLearningMPC:
         self.residual_fun = np.zeros((self.N, self.nw))
         self.residual_jac = np.zeros((self.nw, self.N, self.nx + self.nu))
         self.nlp_residuals = np.zeros((self.ocp_opts["nlp_solver_max_iter"], 4))
+        self.time_preparation = np.zeros((self.ocp_opts["nlp_solver_max_iter"],))
+        self.time_feedback = np.zeros((self.ocp_opts["nlp_solver_max_iter"],))
+        self.time_residual = np.zeros((self.ocp_opts["nlp_solver_max_iter"],))
+        self.time_nominal = np.zeros((self.ocp_opts["nlp_solver_max_iter"],))
+        self.time_iter = np.zeros((self.ocp_opts["nlp_solver_max_iter"],))
         self.num_iter = 0
 
         self.has_residual_model = False
@@ -138,8 +144,9 @@ class ResidualLearningMPC:
 
     def solve(self, acados_sqp_mode=False):
         status_feed = 0
-        self.num_iter = 0
         for i in range(self.ocp_opts["nlp_solver_max_iter"]):
+            time_iter_start = perf_counter()
+            self.num_iter = i
             self.preparation()
 
             if acados_sqp_mode:
@@ -152,7 +159,7 @@ class ResidualLearningMPC:
                         status_feed, i
                     )
                 )
-            self.num_iter += 1
+            self.time_iter[i] = perf_counter() - time_iter_start
 
             # ------------------- Check termination --------------------
             if self.ocp.solver_options.rti_log_residuals:
@@ -167,6 +174,7 @@ class ResidualLearningMPC:
         return status_feed
 
     def preparation(self):
+        time_preparation_start = perf_counter()
         # ------------------- Query nodes --------------------
         # preparation rti_phase (solve() AFTER setting params to get right Jacobians)
         self.ocp_solver.options_set("rti_phase", 1)
@@ -184,13 +192,15 @@ class ResidualLearningMPC:
 
         # ------------------- Sensitivities --------------------
         if self.has_residual_model:
+            time_residual_start = perf_counter()
             self.residual_fun, self.residual_jac = (
                 self.residual_model.value_and_jacobian(self.y_hat_all)
             )
+            self.time_residual[self.num_iter] = perf_counter() - time_residual_start
 
-        # ------------------- Update stages --------------------
-        for stage in range(self.N):
-            if self.has_nominal_model:
+        if self.has_nominal_model:
+            time_nominal_start = perf_counter()
+            for stage in range(self.N):
                 # set parameters (linear matrices and offset)
                 # ------------------- Integrate --------------------
                 self.sim_solver.set("x", self.x_hat_all[stage, :])
@@ -203,7 +213,10 @@ class ResidualLearningMPC:
                 self.nominal_jac[stage, :, self.nx : self.nx + self.nu] = (
                     self.sim_solver.get("Su")
                 )
+            self.time_nominal[self.num_iter] = perf_counter() - time_nominal_start
 
+        # ------------------- Update stages --------------------
+        for stage in range(self.N):
             # ------------------- Build linear model --------------------
             A_total = (
                 self.nominal_jac[stage, :, 0 : self.nx]
@@ -239,11 +252,14 @@ class ResidualLearningMPC:
         # feedback rti_phase
         # ------------------- Phase 1 --------------------
         status = self.ocp_solver.solve()
+        self.time_preparation[self.num_iter] = perf_counter() - time_preparation_start
 
     def feedback(self):
+        time_feedback_start = perf_counter()
         # ------------------- Solve QP --------------------
         self.ocp_solver.options_set("rti_phase", 2)
         status = self.ocp_solver.solve()
+        self.time_feedback[self.num_iter] = perf_counter() - time_feedback_start
         return status
 
     def get_solution(
@@ -339,13 +355,39 @@ class ResidualLearningMPC:
 
     def get_stats(self, stat: str):
         if stat == "res_stat_all":
-            return self.nlp_residuals[: self.num_iter, 0]
+            return self.nlp_residuals[: self.num_iter + 1, 0]
         if stat == "res_eq_all":
-            return self.nlp_residuals[: self.num_iter, 1]
+            return self.nlp_residuals[: self.num_iter + 1, 1]
         if stat == "res_ineq_all":
-            return self.nlp_residuals[: self.num_iter, 2]
+            return self.nlp_residuals[: self.num_iter + 1, 2]
         if stat == "res_comp_all":
-            return self.nlp_residuals[: self.num_iter, 3]
+            return self.nlp_residuals[: self.num_iter + 1, 3]
+        if stat == "sqp_iter" or stat == "nlp_iter":
+            return self.num_iter + 1
+        if stat == "time_preparation":
+            return self.time_preparation[self.num_iter]
+        if stat == "time_feedback":
+            return self.time_feedback[self.num_iter]
+        if stat == "time_preparation_all":
+            return self.time_preparation[: self.num_iter + 1]
+        if stat == "time_feedback_all":
+            return self.time_feedback[: self.num_iter + 1]
+        if stat == "time_sim":
+            return self.time_nominal[self.num_iter]
+        if stat == "time_sim_all":
+            return self.time_nominal[: self.num_iter + 1]
+        if stat == "time_lin":
+            return self.time_nominal[self.num_iter] + self.time_residual[self.num_iter]
+        if stat == "time_lin_all":
+            return (
+                self.time_nominal[: self.num_iter + 1]
+                + self.time_residual[: self.num_iter + 1]
+            )
+        if stat == "time_tot":
+            return np.sum(self.time_iter)
+        print(
+            f"Warning: Returning acados solver status '{stat}', which might be incorrect when used with L4acados."
+        )
         return self.ocp_solver.get_stats(stat)
 
     def set(self, stage: int, var: str, value: np.ndarray) -> None:
@@ -367,7 +409,7 @@ class ResidualLearningMPC:
     def print_statistics(self) -> None:
         if self.ocp_opts["nlp_solver_type"] == "SQP":
             print("iter    res_stat        res_eq          res_ineq        res_comp")
-            for i in range(self.num_iter):
+            for i in range(self.num_iter + 1):
                 print(
                     f"{i:<7d} {self.nlp_residuals[i, 0]:12e}    {self.nlp_residuals[i, 1]:12e}    {self.nlp_residuals[i, 2]:12e}    {self.nlp_residuals[i, 3]:11e}"
                 )
