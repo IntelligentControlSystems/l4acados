@@ -34,6 +34,16 @@ class MultiLayerPerceptron(torch.nn.Module):
         return x
 
 
+class NaiveMultiLayerPerceptron(l4c.naive.nn.mlp.MultiLayerPerceptron):
+    def __init__(self, n_inputs=2, hidden_layers=2, hidden_size=512, n_outputs=1):
+        super().__init__(n_inputs, hidden_size, n_outputs, hidden_layers)
+
+        # Model is not trained -- setting output to zero
+        with torch.no_grad():
+            self.output_layer.bias.fill_(0.0)
+            self.output_layer.weight.fill_(0.0)
+
+
 class DoubleIntegratorWithLearnedDynamics:
     def __init__(self, learned_dyn=None, name="wr", batched=False, batch_dim=1):
         self.learned_dyn = learned_dyn

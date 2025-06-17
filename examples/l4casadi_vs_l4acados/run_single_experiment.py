@@ -1,4 +1,10 @@
-from acados import run, MultiLayerPerceptron, DoubleIntegratorWithLearnedDynamics, MPC
+from acados import (
+    run,
+    MultiLayerPerceptron,
+    NaiveMultiLayerPerceptron,
+    DoubleIntegratorWithLearnedDynamics,
+    MPC,
+)
 import l4casadi as l4c
 import numpy as np
 import time
@@ -21,13 +27,40 @@ def init_l4casadi(
     batched: bool = True,
     device="cpu",
     num_threads_acados_openmp=1,
+    use_naive_l4casadi: bool = False,
 ):
+    n_inputs = 2
+    n_outputs = 1
+    hidden_size = 512
+
+    if use_naive_l4casadi:
+        # mlp = l4c.naive.MultiLayerPerceptron(
+        #     n_inputs, hidden_size, n_outputs, hidden_layers
+        # )
+        mlp = NaiveMultiLayerPerceptron(
+            n_inputs=n_inputs,
+            hidden_size=hidden_size,
+            hidden_layers=hidden_layers,
+            n_outputs=n_outputs,
+        )
+    else:
+        mlp = MultiLayerPerceptron(
+            n_inputs=n_inputs,
+            hidden_size=hidden_size,
+            hidden_layers=hidden_layers,
+            n_outputs=n_outputs,
+        )
+
     learned_dyn_model = l4c.L4CasADi(
-        MultiLayerPerceptron(hidden_layers=hidden_layers),
+        mlp,
         batched=batched,
         name="learned_dyn",
         device=device,
     )
+    if use_naive_l4casadi:
+        learned_dyn_model_shared_lib_dir = None
+    else:
+        learned_dyn_model_shared_lib_dir = learned_dyn_model.shared_lib_dir
 
     model = DoubleIntegratorWithLearnedDynamics(
         learned_dyn_model, batched=batched, batch_dim=batch_dim
@@ -36,7 +69,7 @@ def init_l4casadi(
     mpc_obj = MPC(
         model=model.model(),
         N=N,
-        external_shared_lib_dir=learned_dyn_model.shared_lib_dir,
+        external_shared_lib_dir=learned_dyn_model_shared_lib_dir,
         external_shared_lib_name=learned_dyn_model.name,
         num_threads_acados_openmp=num_threads_acados_openmp,
     )
@@ -95,11 +128,10 @@ def run_timing_experiment(N, solver, solve_call, solve_steps=1e3):
     opt_times = []
 
     for i in range(solve_steps):
-        # t = np.linspace(i * ts, (i + 1) * ts, N) # TODO: this ts should be T IMO, maybe with lower frequency?
         t = np.linspace(
-            i * T, (i + 1) * T, N
+            i * ts, i * ts + T, N
         )  # TODO: this ts should be T IMO, maybe with lower frequency?
-        yref = np.sin(0.1 * t + np.pi / 2)
+        yref = np.sin(2 * np.pi * t + np.pi / 2)
         for t, ref in enumerate(yref):
             solver.set(t, "yref", np.array([ref]))
         solver.set(0, "lbx", xt)
@@ -165,6 +197,7 @@ def run(
         num_threads = os.cpu_count() // 2
     torch.set_num_threads(num_threads)
 
+    # standard L4CasADi
     solver_l4casadi = init_l4casadi(
         N,
         hidden_layers,
@@ -180,6 +213,24 @@ def run(
 
     shutil.rmtree("c_generated_code")
     shutil.rmtree("_l4c_generated")
+    delete_file_by_pattern("./", r".*[ocp|sim].*\.json")
+
+    # Naive L4CasADi
+    solver_l4casadi_naive = init_l4casadi(
+        N,
+        hidden_layers,
+        device=device,
+        num_threads_acados_openmp=num_threads_acados_openmp,
+        use_naive_l4casadi=True,
+    )
+    x_l4casadi_naive, opt_times_l4casadi_naive = run_timing_experiment(
+        N,
+        solver_l4casadi_naive,
+        lambda: time_fun_call(solver_l4casadi_naive.solve),
+        solve_steps=solve_steps,
+    )
+
+    shutil.rmtree("c_generated_code")
     delete_file_by_pattern("./", r".*[ocp|sim].*\.json")
 
     solver_l4acados = init_l4acados(
@@ -208,13 +259,22 @@ def run(
             ),
             x_l4casadi=x_l4casadi,
             opt_times_l4casadi=opt_times_l4casadi,
+            x_l4casadi_naive=x_l4casadi_naive,
+            opt_times_l4casadi_naive=opt_times_l4casadi_naive,
             x_l4acados=x_l4acados,
             opt_times_l4acados=opt_times_l4acados,
         )
 
-    del solver_l4casadi, solver_l4acados
+    del solver_l4casadi, solver_l4casadi_naive, solver_l4acados
 
-    return x_l4casadi, opt_times_l4casadi, x_l4acados, opt_times_l4acados
+    return (
+        x_l4casadi,
+        opt_times_l4casadi,
+        x_l4casadi_naive,
+        opt_times_l4casadi_naive,
+        x_l4acados,
+        opt_times_l4acados,
+    )
 
 
 if __name__ == "__main__":
