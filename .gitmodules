@@ -3,4 +3,4 @@
 	url = https://github.com/acados/acados.git
 [submodule "external/l4casadi"]
 	path = external/l4casadi
-	url = git@github.com:lahramon/l4casadi.git
+	url = git@github.com:Tim-Salzmann/l4casadi.git
