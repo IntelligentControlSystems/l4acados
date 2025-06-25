@@ -1,6 +1,7 @@
 from typing import Optional
 import numpy as np
 import torch
+from torch.func import vmap, jacrev, jacfwd
 import gpytorch
 
 from ..pytorch_feature_selector import PyTorchFeatureSelector
@@ -30,6 +31,9 @@ class GPyTorchResidualModel(PyTorchResidualModel):
         super().__init__(gp_model, feature_selector)
         self.gp_model = gp_model
         self._data_processing_strategy = data_processing_strategy
+        # TODO: Reuse PyTorchResidualModel's jacobian function (not supported by GPyTorch?)
+        # self.eval_fun = lambda y: self.gp_model(self._feature_selector(y)).mean
+        # self.jacrev_fun_vmap = vmap(jacrev(lambda y: self.eval_fun(y)))
 
     def _predictions_fun_sum(self, y):
         """Helper function for jacobian computation
@@ -63,6 +67,13 @@ class GPyTorchResidualModel(PyTorchResidualModel):
             self.current_variance = self.to_numpy(self.predictions.variance)
 
         return self.current_prediction
+
+    def jacobian(self, y):
+        y_tensor = self.to_tensor(y)
+        self.current_prediction_dy = self.to_numpy(
+            torch.autograd.functional.jacobian(self._predictions_fun_sum, y_tensor)
+        )
+        return self.current_prediction_dy
 
     def record_datapoint(
         self, x_input: np.array, y_target: np.array, timestamp: Optional[float] = None
