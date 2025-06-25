@@ -1,4 +1,5 @@
 import torch
+from torch.func import vmap, jacrev, jacfwd
 from typing import Optional
 
 from l4acados.models import ResidualModel
@@ -21,6 +22,7 @@ class PyTorchResidualModel(ResidualModel):
         self,
         model: torch.nn.Module,
         feature_selector: Optional[PyTorchFeatureSelector] = None,
+        use_jacfwd=True,
     ):
         self.model = model
         self._feature_selector = (
@@ -31,33 +33,31 @@ class PyTorchResidualModel(ResidualModel):
         self.device = next(model.parameters()).device
         self.to_numpy = lambda T: to_numpy(T, self.device.type)
         self.to_tensor = lambda X: to_tensor(X, self.device.type)
-
-    def _predictions_fun_sum(self, y):
-        """Helper function for jacobian computation
-
-        sums up the mean predictions along the first dimension
-        (i.e. along the horizon).
-        """
-        self.evaluate(y, require_grad=True)
-        return self.predictions.sum(dim=0)
+        self.eval_fun = lambda y: self.model(self._feature_selector(y))
+        if use_jacfwd:
+            jacfun = jacfwd
+        else:
+            jacfun = jacrev
+        self.jacfun_fun_vmap = vmap(jacfun(lambda y: self.eval_fun(y)))
 
     def evaluate(self, y, require_grad=False):
         y_tensor = self.to_tensor(y)
         if require_grad:
-            self.predictions = self.model(self._feature_selector(y_tensor))
+            self.predictions = self.eval_fun(y_tensor)
         else:
             with torch.no_grad():
-                self.predictions = self.model(self._feature_selector(y_tensor))
+                self.predictions = self.eval_fun(y_tensor)
 
         self.current_prediction = self.to_numpy(self.predictions)
         return self.current_prediction
 
     def jacobian(self, y):
         y_tensor = self.to_tensor(y)
-        mean_dy = torch.autograd.functional.jacobian(
-            self._predictions_fun_sum, y_tensor
+        self.current_prediction_dy = self.to_numpy(
+            # TODO: remove transpose
+            self.jacfun_fun_vmap(y_tensor).transpose(0, 1)
         )
-        return self.to_numpy(mean_dy)
+        return self.current_prediction_dy
 
     def value_and_jacobian(self, y):
         """Computes the necessary values for GPMPC
@@ -70,5 +70,4 @@ class PyTorchResidualModel(ResidualModel):
             - mean_dy:  (residual_dim, N, state_dim) tensor
             - covariance:  (N, residual_dim) tensor
         """
-        self.current_prediction_dy = self.jacobian(y)
-        return self.current_prediction, self.current_prediction_dy
+        return self.evaluate(y), self.jacobian(y)
