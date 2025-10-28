@@ -15,12 +15,17 @@ class PyTorchFeatureSelector:
         - input_selection: Either a vector or an (gp_input_dim, state_dim) matrix providing the mapping from
         full feature space to GP input feature space. If None, then this represents an identity map.
         - external_inputs: Optional constant feature vector which are concatenated to the extracted features.
+        - clock: Optional function which provides the current time. If None, then no time feature is added by default.
+        - time_delta: Optional constant specifying the time delta between input points (default: 0.0).
+        - device: Device on which the feature selector is stored.
     """
 
     def __init__(
         self,
         input_selection: Optional[Union[list, np.ndarray, torch.Tensor]] = None,
         external_inputs: Optional[Union[list, np.ndarray, torch.Tensor]] = None,
+        clock: Optional[callable] = None,
+        time_delta: Optional[float] = 0.0,
         device="cpu",
     ) -> torch.Tensor:
         if input_selection is not None:
@@ -60,14 +65,22 @@ class PyTorchFeatureSelector:
         else:
             self.external_inputs = None
 
+        self.clock = clock
+        self.time_delta = time_delta
+
     def __str__(self) -> str:
         return str(self._input_selection_matrix)
 
-    def __call__(self, x_input: torch.Tensor) -> torch.Tensor:
+    def __call__(
+        self,
+        x_input: torch.Tensor,
+        timestamp: Optional[Union[float, torch.Tensor]] = None,
+    ) -> torch.Tensor:
         """Extracts GP features from the full state vector and adds constant features if available.
 
         Args:
             - x_input in (N, state_dim)
+            - timestamp: Optional time feature.
 
         Returns:
             - extracted features in (N, gp_input_dim)
@@ -82,6 +95,17 @@ class PyTorchFeatureSelector:
             features = torch.cat(
                 (features, self.external_inputs[: x_input.size(0), :]), dim=-1
             )
+
+        if timestamp is None and self.clock is not None:
+            timestamp = self.clock()
+        if timestamp is not None:
+            if not torch.is_tensor(timestamp):
+                timestamp = (
+                    timestamp
+                    + torch.arange(x_input.size(0), device=features.device).view(-1, 1)
+                    * self.time_delta
+                )
+            features = torch.cat((features, timestamp), dim=-1)
 
         return features
 

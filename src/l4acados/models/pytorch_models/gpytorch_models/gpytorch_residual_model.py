@@ -52,10 +52,14 @@ class GPyTorchResidualModel(PyTorchResidualModel):
         ):
             y_tensor = self.to_tensor(y)
             if require_grad:
-                self.predictions = self.gp_model(self._feature_selector(y_tensor))
+                self.predictions = self.gp_model.likelihood(
+                    self.gp_model(self._feature_selector(y_tensor))
+                )
             else:
                 with torch.no_grad():
-                    self.predictions = self.gp_model(self._feature_selector(y_tensor))
+                    self.predictions = self.gp_model.likelihood(
+                        self.gp_model(self._feature_selector(y_tensor))
+                    )
 
         self.current_prediction = self.to_numpy(self.predictions.mean)
 
