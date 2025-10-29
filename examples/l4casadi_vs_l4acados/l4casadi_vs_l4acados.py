@@ -121,9 +121,6 @@ params_2 = count_params(
 params_2, hidden_size_2, hidden_layers_2
 
 # %%
-params / params_2
-
-# %%
 # hidden_layers = int(hidden_layers_2)
 # hidden_size = int(hidden_size_2)
 
