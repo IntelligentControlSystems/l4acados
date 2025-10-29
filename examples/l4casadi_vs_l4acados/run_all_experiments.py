@@ -1,19 +1,38 @@
 from run_single_experiment import *
 import subprocess
 
-N_arr = [int(i) for i in np.ceil(np.logspace(0, 3, 10))]
-batch_dim = 1
-hidden_layers_arr = [1, 10, 20]
-solve_steps = 1000
-device_arr = ["cpu", "cpu", "cuda", "cpu", "cuda"]
-num_threads_arr = [1, 10, 1, 1, 1]
-num_threads_acados_openmp_arr = [0, 0, 0, 10, 10]
-save_data = True
+debug = False
 
-assert len(num_threads_arr) == len(device_arr) == len(num_threads_acados_openmp_arr)
+if debug:
+    N_arr = [1, 10, 100]
+    hidden_layers_arr = [1, 16, 1]
+    hidden_size_arr = [256, 256, 1024]
+    solve_steps = 100
+    device_arr = ["cpu", "cpu", "cuda", "cpu", "cuda"]
+    num_threads_arr = [1, 10, 1, 1, 1]
+    num_threads_acados_openmp_arr = [0, 0, 0, 10, 10]
+    # device_arr = ["cuda"]
+    # num_threads_arr = [1]
+    # num_threads_acados_openmp_arr = [10]
+    save_data = True
+else:
+    # N_arr = [int(i) for i in np.ceil(np.logspace(0, 3, 10))]
+    N_arr = [int(i) for i in np.ceil(np.logspace(0, 2, 5))]
+    hidden_layers_arr = [1, 16, 1]
+    hidden_size_arr = [256, 256, 1024]
+    solve_steps = 1000
+    device_arr = ["cpu", "cpu", "cuda", "cpu", "cuda"]
+    num_threads_arr = [1, 10, 1, 1, 1]
+    num_threads_acados_openmp_arr = [0, 0, 0, 10, 10]
+    save_data = True
+
+assert len(num_threads_arr) == len(device_arr)
+assert len(num_threads_arr) == len(num_threads_acados_openmp_arr)
+
 device_threads_arr = list(
     zip(device_arr, num_threads_arr, num_threads_acados_openmp_arr)
 )
+nn_size_arr = list(zip(hidden_layers_arr, hidden_size_arr))
 
 print(
     f"Running experiments with\nN={N_arr}\nhidden_layers={hidden_layers_arr}\ndevices={device_arr}\nnum_threads_torch={num_threads_arr}\nnum_threads_acados={num_threads_acados_openmp_arr}"
@@ -32,7 +51,7 @@ for device, num_threads, num_threads_acados_openmp in device_threads_arr:
     num_threads_acados_openmp_previous = num_threads_acados_openmp
 
     for i, N in enumerate(N_arr):
-        for hidden_layers in hidden_layers_arr:
+        for hidden_layers, hidden_size in nn_size_arr:
             print(
                 f"Calling subprocess with N={N}, hidden_layers={hidden_layers}, device={device}, num_threads={num_threads}, num_threads_acados_openmp={num_threads_acados_openmp}"
             )
@@ -51,6 +70,8 @@ for device, num_threads, num_threads_acados_openmp in device_threads_arr:
                 str(N),
                 "--hidden_layers",
                 str(hidden_layers),
+                "--hidden_size",
+                str(hidden_size),
                 "--device",
                 str(device),
                 "--num_threads",

@@ -23,8 +23,8 @@ class MultiLayerPerceptron(torch.nn.Module):
 
         # Model is not trained -- setting output to zero
         with torch.no_grad():
-            self.out_layer.bias.fill_(0.0)
-            self.out_layer.weight.fill_(0.0)
+            self.out_layer.bias.fill_(1e-30)
+            self.out_layer.weight.fill_(1e-30)
 
     def forward(self, x):
         x = self.input_layer(x)
@@ -35,13 +35,28 @@ class MultiLayerPerceptron(torch.nn.Module):
 
 
 class NaiveMultiLayerPerceptron(l4c.naive.nn.mlp.MultiLayerPerceptron):
-    def __init__(self, n_inputs=2, hidden_layers=2, hidden_size=512, n_outputs=1):
-        super().__init__(n_inputs, hidden_size, n_outputs, hidden_layers)
+    def __init__(
+        self,
+        n_inputs=2,
+        hidden_layers=2,
+        hidden_size=512,
+        n_outputs=1,
+        activation="Tanh",
+    ):
+        super().__init__(
+            n_inputs,
+            hidden_size,
+            n_outputs,
+            hidden_layers + 1,
+            # NOTE: for-loop in NaiveMultiLayerPerceptron uses range(hidden_layers - 1),
+            # leading to 0 hidden layers if hidden_layers=1.
+            activation=activation,
+        )
 
         # Model is not trained -- setting output to zero
         with torch.no_grad():
-            self.output_layer.bias.fill_(0.0)
-            self.output_layer.weight.fill_(0.0)
+            self.output_layer.bias.fill_(1e-30)
+            self.output_layer.weight.fill_(1e-30)
 
 
 class DoubleIntegratorWithLearnedDynamics:
@@ -96,11 +111,13 @@ class MPC:
         self,
         model,
         N,
+        T,
         external_shared_lib_dir=None,
         external_shared_lib_name=None,
         num_threads_acados_openmp=1,
     ):
         self.N = N
+        self.T = T
         self.model = model
         self.external_shared_lib_dir = external_shared_lib_dir
         self.external_shared_lib_name = external_shared_lib_name
@@ -113,7 +130,7 @@ class MPC:
     def ocp(self):
         model = self.model
 
-        t_horizon = 1.0
+        t_horizon = self.T
         N = self.N
 
         # Get model
@@ -220,6 +237,7 @@ class MPC:
 
 def run():
     N = 10
+    T = 1.0
     learned_dyn_model = l4c.L4CasADi(
         MultiLayerPerceptron(), model_expects_batch_dim=True, name="learned_dyn"
     )
@@ -232,6 +250,7 @@ def run():
     solver = MPC(
         model=model.model(),
         N=N,
+        T=T,
         external_shared_lib_dir=learned_dyn_model.shared_lib_dir,
         external_shared_lib_name=learned_dyn_model.name,
     ).solver

@@ -3,7 +3,7 @@ import numpy as np
 from typing import Optional, Union
 
 
-class PyTorchFeatureSelector:
+class PyTorchFeatureSelector(torch.nn.Module):
     """Creates the Feature selector which is used for GP input dimensionality reduction.
 
     I.e. generates  :math:`F \in \mathbb{R}^{gp_input_dim \times state_dim}` for :math:`y \sim gp(Fx)`,
@@ -28,6 +28,8 @@ class PyTorchFeatureSelector:
         time_delta: Optional[float] = 0.0,
         device="cpu",
     ) -> torch.Tensor:
+        super().__init__()
+
         if input_selection is not None:
             if isinstance(input_selection, (list, np.ndarray)):
                 input_selection = torch.Tensor(input_selection)
@@ -71,7 +73,7 @@ class PyTorchFeatureSelector:
     def __str__(self) -> str:
         return str(self._input_selection_matrix)
 
-    def __call__(
+    def forward(
         self,
         x_input: torch.Tensor,
         timestamp: Optional[Union[float, torch.Tensor]] = None,
@@ -111,7 +113,7 @@ class PyTorchFeatureSelector:
 
 
 def get_input_selection_matrix(
-    input_selection: Union[list, np.ndarray, torch.Tensor]
+    input_selection: Union[list, np.ndarray, torch.Tensor],
 ) -> torch.Tensor:
     """Generate an input selection matrix from a 1D vector.
 

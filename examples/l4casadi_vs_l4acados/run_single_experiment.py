@@ -19,10 +19,13 @@ import argparse
 import os, shutil, re
 import subprocess
 
+ts = 0.05
+
 
 def init_l4casadi(
     N: int,
     hidden_layers: int,
+    hidden_size: int,
     batch_dim: int = 1,
     batched: bool = True,
     device="cpu",
@@ -31,7 +34,6 @@ def init_l4casadi(
 ):
     n_inputs = 2
     n_outputs = 1
-    hidden_size = 512
 
     if use_naive_l4casadi:
         # mlp = l4c.naive.MultiLayerPerceptron(
@@ -69,6 +71,7 @@ def init_l4casadi(
     mpc_obj = MPC(
         model=model.model(),
         N=N,
+        T=ts * N,
         external_shared_lib_dir=learned_dyn_model_shared_lib_dir,
         external_shared_lib_name=learned_dyn_model.name,
         num_threads_acados_openmp=num_threads_acados_openmp,
@@ -87,8 +90,8 @@ def init_l4casadi(
 def init_l4acados(
     N: int,
     hidden_layers: int,
+    hidden_size: int,
     batch_dim: int = 1,
-    batched: bool = True,
     device="cpu",
     use_cython=False,
     num_threads_acados_openmp=1,
@@ -97,12 +100,14 @@ def init_l4acados(
     residual_model = PyTorchResidualModel(
         MultiLayerPerceptron(hidden_layers=hidden_layers).to(device),
         feature_selector,
+        measure_to_tensor_time=True,
     )
     B_proj = np.ones((1, batch_dim))
     model_new = DoubleIntegratorWithLearnedDynamics(None, name="wr_new")
     mpc_obj_nolib = MPC(
         model=model_new.model(),
         N=N,
+        T=ts * N,
         num_threads_acados_openmp=num_threads_acados_openmp,
     )
     solver_nolib = mpc_obj_nolib.solver
@@ -119,14 +124,47 @@ def init_l4acados(
     return solver_l4acados
 
 
-def run_timing_experiment(N, solver, solve_call, solve_steps=1e3):
+def get_timings(solver):
+    timings_dict = {
+        "time_preparation": solver.get_stats("time_preparation"),
+        "time_feedback": solver.get_stats("time_feedback"),
+    }
+    return timings_dict
+
+
+def get_timings_l4acados_with_to_tensor_time(l4acados_solver):
+    timings_dict = get_timings(l4acados_solver)
+    timings_dict["time_to_tensor"] = l4acados_solver.residual_model.to_tensor_time
+    timings_dict["time_residual_model"] = l4acados_solver.time_residual[0]
+    timings_dict["time_nominal_model"] = l4acados_solver.time_nominal[0]
+    l4acados_solver.residual_model.to_tensor_time = 0.0  # reset after getting timings
+    return timings_dict
+
+
+def run_timing_experiment(
+    N,
+    init_solver_call,
+    solve_call=lambda solver: 0.0,
+    get_timings_call=lambda solver: {},
+    solve_steps=1e3,
+):
     x = []
     u = []
     xt = np.array([1.0, 0.0])
-    T = 1.0
-    ts = T / N
-    opt_times = []
+    T = ts * N
+    # T = 1.0
+    # ts = T / N
+    solver = init_solver_call()
 
+    opt_times = []
+    opt_times_preparation = []
+    opt_times_feedback = []
+    results_dict = {
+        "time_total": [],
+        "time_preparation": [],
+        "time_feedback": [],
+        "state_trajectory": [],
+    }
     for i in range(solve_steps):
         t = np.linspace(
             i * ts, i * ts + T, N
@@ -138,22 +176,49 @@ def run_timing_experiment(N, solver, solve_call, solve_steps=1e3):
         solver.set(0, "ubx", xt)
 
         # now = time.time()
-        elapsed = solve_call()
+        timings_dict = solve_call(solver)
+        timings_dict_extra = get_timings_call(solver)
 
         xt = solver.get(1, "x")
 
-        opt_times.append(elapsed)
-        x.append(xt)
+        for tdict in [timings_dict, timings_dict_extra]:
+            for key in tdict:
+                if key not in results_dict:
+                    results_dict[key] = []
+                results_dict[key].append(tdict[key])
+
+        results_dict["state_trajectory"].append(xt)
 
         print(f"Running timing experiment: {i}/{solve_steps}")
 
-    return x, opt_times
+    del solver
+    return results_dict
+
+
+def time_rti_call_acados(solver):
+    start_preparation = time.perf_counter()
+    solver.options_set("rti_phase", 1)
+    solver.solve()
+    time_preparation = time.perf_counter() - start_preparation
+
+    start_feedback = time.perf_counter()
+    solver.options_set("rti_phase", 2)
+    solver.solve()
+    time_feedback = time.perf_counter() - start_feedback
+
+    return {
+        "time_preparation_extra": time_preparation,
+        "time_feedback_extra": time_feedback,
+        "time_total": time_preparation + time_feedback,
+    }
 
 
 def time_fun_call(fun):
     now = time.perf_counter()
     fun()
-    return time.perf_counter() - now
+    return {
+        "time_total": time.perf_counter() - now,
+    }
 
 
 def delete_file_by_pattern(dir_path, pattern):
@@ -165,6 +230,7 @@ def delete_file_by_pattern(dir_path, pattern):
 def run(
     N,
     hidden_layers,
+    hidden_size,
     solve_steps,
     device="cpu",
     save_data=False,
@@ -172,6 +238,7 @@ def run(
     num_threads: int = -1,
     num_threads_acados_openmp: int = 1,
     build_acados: bool = True,
+    run_methods=["l4casadi", "l4casadi_naive", "l4acados"],
 ):
 
     if build_acados:
@@ -196,91 +263,109 @@ def run(
     elif num_threads == -1:
         num_threads = os.cpu_count() // 2
     torch.set_num_threads(num_threads)
+    torch.set_num_interop_threads(num_threads)
 
     # standard L4CasADi
-    solver_l4casadi = init_l4casadi(
-        N,
-        hidden_layers,
-        device=device,
-        num_threads_acados_openmp=num_threads_acados_openmp,
-    )
-    x_l4casadi, opt_times_l4casadi = run_timing_experiment(
-        N,
-        solver_l4casadi,
-        lambda: time_fun_call(solver_l4casadi.solve),
-        solve_steps=solve_steps,
-    )
+    if "l4casadi" in run_methods:
+        results_dict_l4casadi = run_timing_experiment(
+            N,
+            lambda: init_l4casadi(
+                N,
+                hidden_layers,
+                hidden_size,
+                device=device,
+                num_threads_acados_openmp=num_threads_acados_openmp,
+                use_naive_l4casadi=False,
+            ),
+            lambda solver: time_rti_call_acados(solver),
+            lambda solver: get_timings(solver),
+            solve_steps=solve_steps,
+        )
 
-    shutil.rmtree("c_generated_code")
-    shutil.rmtree("_l4c_generated")
-    delete_file_by_pattern("./", r".*[ocp|sim].*\.json")
+        shutil.rmtree("c_generated_code")
+        shutil.rmtree("_l4c_generated")
+        delete_file_by_pattern("./", r".*[ocp|sim].*\.json")
+    else:
+        print("Skipping standard L4CasADi, as it is not requested.")
+        results_dict_l4casadi = {}
 
     # Naive L4CasADi
-    solver_l4casadi_naive = init_l4casadi(
-        N,
-        hidden_layers,
-        device=device,
-        num_threads_acados_openmp=num_threads_acados_openmp,
-        use_naive_l4casadi=True,
-    )
-    x_l4casadi_naive, opt_times_l4casadi_naive = run_timing_experiment(
-        N,
-        solver_l4casadi_naive,
-        lambda: time_fun_call(solver_l4casadi_naive.solve),
-        solve_steps=solve_steps,
-    )
+    if "l4casadi_naive" in run_methods and device == "cpu":
+        results_dict_l4casadi_naive = run_timing_experiment(
+            N,
+            lambda: init_l4casadi(
+                N,
+                hidden_layers,
+                hidden_size,
+                device=device,
+                num_threads_acados_openmp=num_threads_acados_openmp,
+                use_naive_l4casadi=True,
+            ),
+            lambda solver: time_rti_call_acados(solver),
+            lambda solver: get_timings(solver),
+            solve_steps=solve_steps,
+        )
 
-    shutil.rmtree("c_generated_code")
-    delete_file_by_pattern("./", r".*[ocp|sim].*\.json")
+        shutil.rmtree("c_generated_code")
+        delete_file_by_pattern("./", r".*[ocp|sim].*\.json")
+    else:
+        if device != "cpu":
+            print(
+                "Skipping Naive L4CasADi for non-CPU devices, as it is not implemented."
+            )
+        else:
+            print("Skipping Naive L4CasADi, as it is not requested.")
+        results_dict_l4casadi_naive = {}
 
-    solver_l4acados = init_l4acados(
-        N,
-        hidden_layers,
-        device=device,
-        use_cython=True,
-        num_threads_acados_openmp=num_threads_acados_openmp,
-    )
-    x_l4acados, opt_times_l4acados = run_timing_experiment(
-        N,
-        solver_l4acados.ocp_solver,
-        lambda: time_fun_call(lambda: solver_l4acados.solve()),
-        solve_steps=solve_steps,
-    )
+    if "l4acados" in run_methods:
+        results_dict_l4acados = run_timing_experiment(
+            N,
+            lambda: init_l4acados(
+                N,
+                hidden_layers,
+                hidden_size,
+                device=device,
+                use_cython=True,
+                num_threads_acados_openmp=num_threads_acados_openmp,
+            ),
+            lambda solver: time_fun_call(solver.solve),
+            lambda solver: get_timings_l4acados_with_to_tensor_time(solver),
+            solve_steps=solve_steps,
+        )
 
-    shutil.rmtree("c_generated_code")
-    delete_file_by_pattern("./", r".*[ocp|sim].*\.json")
+        shutil.rmtree("c_generated_code")
+        delete_file_by_pattern("./", r".*[ocp|sim].*\.json")
+    else:
+        print("Skipping L4Acados, as it is not requested.")
+        results_dict_l4acados = {}
+
+    results_dict_all = {
+        **{f"l4casadi_{key}": value for key, value in results_dict_l4casadi.items()},
+        **{
+            f"l4casadi_naive_{key}": value
+            for key, value in results_dict_l4casadi_naive.items()
+        },
+        **{f"l4acados_{key}": value for key, value in results_dict_l4acados.items()},
+    }
 
     if save_data:
         print("Saving data")
         np.savez(
             os.path.join(
                 save_dir,
-                f"l4casadi_vs_l4acados_N{N}_layers{hidden_layers}_steps{solve_steps}_{device}_threads{num_threads}_acados_{num_threads_acados_openmp}.npz",
+                f"l4casadi_vs_l4acados_N{N}_layers{hidden_layers}_size{hidden_size}_steps{solve_steps}_{device}_threads{num_threads}_acados{num_threads_acados_openmp}.npz",
             ),
-            x_l4casadi=x_l4casadi,
-            opt_times_l4casadi=opt_times_l4casadi,
-            x_l4casadi_naive=x_l4casadi_naive,
-            opt_times_l4casadi_naive=opt_times_l4casadi_naive,
-            x_l4acados=x_l4acados,
-            opt_times_l4acados=opt_times_l4acados,
+            **results_dict_all,
         )
 
-    del solver_l4casadi, solver_l4casadi_naive, solver_l4acados
-
-    return (
-        x_l4casadi,
-        opt_times_l4casadi,
-        x_l4casadi_naive,
-        opt_times_l4casadi_naive,
-        x_l4acados,
-        opt_times_l4acados,
-    )
+    return results_dict_all
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--N", type=int, default=10)
     parser.add_argument("--hidden_layers", type=int, default=1)
+    parser.add_argument("--hidden_size", type=int, default=512)
     parser.add_argument("--solve_steps", type=int, default=1000)
     parser.add_argument("--num_threads", type=int, default=-1)
     parser.add_argument("--num_threads_acados_openmp", type=int, default=1)
@@ -299,6 +384,7 @@ if __name__ == "__main__":
     run(
         args.N,
         args.hidden_layers,
+        args.hidden_size,
         args.solve_steps,
         device=args.device,
         num_threads=args.num_threads,
@@ -307,4 +393,4 @@ if __name__ == "__main__":
         save_data=True,
     )
 
-# python run_single_experiment.py --N 10 --hidden_layers 20 --solve_steps 100 --num_threads 1 --num_threads_acados_openmp 14 --device cpu --(no-)build_acados
+# python run_single_experiment.py --N 10 --hidden_layers 20 --hidden_size 512 --solve_steps 100 --num_threads 1 --num_threads_acados_openmp 14 --device cpu --(no-)build_acados
