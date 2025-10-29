@@ -1,4 +1,4 @@
-image: python:3.9
+image: python:3.12
 stages:
   - format
   - build
@@ -19,12 +19,11 @@ stages:
   image: "python:$PYTHON_VERSION"
   parallel:
     matrix:
-      - PYTHON_VERSION: ["3.8", "3.9", "3.10"]
+      - PYTHON_VERSION: ["3.8", "3.10", "3.12"]
   before_script:
     - python --version ; pip --version  # For debugging
     - python -m venv $VENV_DIR
     - source "$VENV_DIR/bin/activate" || exit 1
-    - pip list # For debugging
     # l4casadi
     - cd $CI_PROJECT_DIR && git submodule update --recursive --init external/l4casadi || exit 1
     - cd $CI_PROJECT_DIR/external/l4casadi
@@ -33,7 +32,8 @@ stages:
     - pip install . --no-build-isolation || exit 1
     # l4acados
     - cd $CI_PROJECT_DIR
-    - pip install -e ./external/acados/interfaces/acados_template || exit 1
+    - ls -al external/ || exit 1
+    - pip install -e ./external/acados_$PYTHON_VERSION/interfaces/acados_template || exit 1
     - pip install -e .[test] --no-build-isolation || exit 1
     - pip install -e .[gpytorch-exo] || exit 1
   variables:
@@ -47,14 +47,13 @@ stages:
   script:
     - pytest --ignore external/
   variables:
-    ACADOS_SOURCE_DIR: "$CI_PROJECT_DIR/external/acados"
+    ACADOS_SOURCE_DIR: "$CI_PROJECT_DIR/external/acados_$PYTHON_VERSION"
     LD_LIBRARY_PATH: "$ACADOS_SOURCE_DIR/lib"
   cache:
-    key: pip-cache-$PYTHON_VERSION
-    paths:
-      - .cache/pip
-      # - $VENV_DIR
-    policy: pull
+    - key: pip-cache-$PYTHON_VERSION
+      paths:
+        - .cache/pip
+      policy: pull
 
 
 ### =============================================================
@@ -74,21 +73,23 @@ run formatters: # Check whether code adheres to the required formats
 
 install acados:
   extends: .deep_thought_job
+  image: "python:$PYTHON_VERSION"
+  parallel:
+    matrix:
+      - PYTHON_VERSION: ["3.8", "3.10", "3.12"]
   stage: build
-  image: python:3.8
   script:
     - apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y cmake wget
     - mkdir -p $CI_PROJECT_DIR/external/acados/build && cd $CI_PROJECT_DIR/external/acados/build && cmake -DACADOS_PYTHON=ON .. && make install -j4 || exit 1
     - cd $CI_PROJECT_DIR/external/acados/bin && wget https://github.com/acados/tera_renderer/releases/download/v0.0.34/t_renderer-v0.0.34-linux -O t_renderer && chmod +x t_renderer || exit 1
+    - cp -R $CI_PROJECT_DIR/external/acados $CI_PROJECT_DIR/external/acados_$PYTHON_VERSION || exit 1
   retry: 0
   tags:
     - deep-thought
   artifacts:
     paths:
-      - $CI_PROJECT_DIR/external/acados/
-  # variables:
-  #   GIT_SUBMODULE_STRATEGY: recursive
-  #   GIT_SUBMODULE_PATHS: external/acados
+      - $CI_PROJECT_DIR/external/acados_$PYTHON_VERSION
+    expire_in: 1 day
 
 
 install python dependencies:
@@ -97,14 +98,14 @@ install python dependencies:
   script:
     - python -c "import numpy, gpytorch, acados_template, l4casadi" || exit 1
   cache:
-    key: pip-cache-$PYTHON_VERSION
-    paths:
-      - .cache/pip
-      # - $VENV_DIR # TODO: fix caching of venv
-  # artifacts:
-  #   paths:
-  #     - "$VENV_DIR/"
-
+    - key: pip-cache-$PYTHON_VERSION
+      paths:
+        - .cache/pip
+  # needs:
+  #   - job: install acados
+  #     parallel:
+  #       matrix:
+  #         - PYTHON_VERSION: ['$[[ matrix.PYTHON_VERSION ]]']
 
 ### =============================================================
 ### ==============     TESTING STAGE    =========================
@@ -115,3 +116,8 @@ run tests:
   script:
     - pytest --ignore external/
   resource_group: l4acados_tests
+  # needs:
+  #   - job: install python dependencies
+  #     parallel:
+  #       matrix:
+  #         - PYTHON_VERSION: ['$[[ matrix.PYTHON_VERSION ]]']
