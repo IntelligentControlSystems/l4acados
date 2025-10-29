@@ -25,7 +25,7 @@ class GPyTorchResidualModel(PyTorchResidualModel):
     def __init__(
         self,
         gp_model: gpytorch.models.ExactGP,
-        feature_selector: Optional[PyTorchFeatureSelector] = None,
+        feature_selector: Optional[PyTorchFeatureSelector] = PyTorchFeatureSelector(),
         data_processing_strategy: Optional[DataProcessingStrategy] = VoidDataStrategy,
     ):
         super().__init__(gp_model, feature_selector)
