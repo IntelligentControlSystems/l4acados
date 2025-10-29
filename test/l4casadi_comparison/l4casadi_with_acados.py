@@ -262,7 +262,7 @@ def run():
     nn_fun_new = MultiLayerPerceptron(
         n_inputs=1, hidden_layers=2, hidden_size=64, n_outputs=1
     )
-    nn_fun_new.load_state_dict(torch.load("nn_params.pt"))
+    nn_fun_new.load_state_dict(torch.load("nn_params.pt", weights_only=True))
     nn_fun_new.eval()
 
     learned_dyn_model = l4c.L4CasADi(nn_fun_new, name="learned_dyn")

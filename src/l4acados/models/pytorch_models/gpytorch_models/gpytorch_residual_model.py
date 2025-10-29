@@ -31,9 +31,6 @@ class GPyTorchResidualModel(PyTorchResidualModel):
         super().__init__(gp_model, feature_selector)
         self.gp_model = gp_model
         self._data_processing_strategy = data_processing_strategy
-        # TODO: Reuse PyTorchResidualModel's jacobian function (not supported by GPyTorch?)
-        # self.eval_fun = lambda y: self.gp_model(self._feature_selector(y)).mean
-        # self.jacrev_fun_vmap = vmap(jacrev(lambda y: self.eval_fun(y)))
 
     def _predictions_fun_sum(self, y):
         """Helper function for jacobian computation
@@ -50,7 +47,7 @@ class GPyTorchResidualModel(PyTorchResidualModel):
         with gpytorch.settings.fast_pred_var(), gpytorch.settings.fast_computations(
             covar_root_decomposition=False
         ):
-            y_tensor = self.to_tensor(y)
+            y_tensor, time_to_tensor = self.to_tensor(y)
             if require_grad:
                 self.predictions = self.gp_model.likelihood(
                     self.gp_model(self._feature_selector(y_tensor))
@@ -61,23 +58,22 @@ class GPyTorchResidualModel(PyTorchResidualModel):
                         self.gp_model(self._feature_selector(y_tensor))
                     )
 
-        self.current_prediction = self.to_numpy(self.predictions.mean)
+        self.current_prediction, time_to_numpy_mean = self.to_numpy(
+            self.predictions.mean
+        )
 
         # NOTE: legacy compatibility, to be removed.
         self.current_mean = self.current_prediction
 
         # NOTE(@naefjo): If we skipped posterior covariances, we keep the old covars in cache for hewing method.
         if gpytorch.settings.skip_posterior_variances.off():
-            self.current_variance = self.to_numpy(self.predictions.variance)
+            self.current_variance, time_to_numpy_var = self.to_numpy(
+                self.predictions.variance
+            )
+
+        self.to_tensor_time += time_to_tensor + time_to_numpy_mean + time_to_numpy_var
 
         return self.current_prediction
-
-    def jacobian(self, y):
-        y_tensor = self.to_tensor(y)
-        self.current_prediction_dy = self.to_numpy(
-            torch.autograd.functional.jacobian(self._predictions_fun_sum, y_tensor)
-        )
-        return self.current_prediction_dy
 
     def record_datapoint(
         self, x_input: np.array, y_target: np.array, timestamp: Optional[float] = None

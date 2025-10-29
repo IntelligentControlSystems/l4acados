@@ -135,7 +135,7 @@ def run(
         n_inputs=1, hidden_layers=2, hidden_size=64, n_outputs=1
     )
     if nn_params_path is not None:
-        nn_fun.load_state_dict(torch.load(nn_params_path))
+        nn_fun.load_state_dict(torch.load(nn_params_path, weights_only=True))
     nn_fun.eval()
 
     solver_l4casadi = init_l4casadi(

@@ -147,8 +147,7 @@ class BatchIndependentInducingPointGpModel(gpytorch.models.ExactGP):
             inducing_point_indices = permuted_indices[:inducing_points]
             inducing_points = train_x[inducing_point_indices, :]
 
-        self.num_inducing_points = inducing_points.size(0)
-
+        self.num_inducing_points = inducing_points.shape[0]
         self.covar_module = gpytorch.kernels.InducingPointKernel(
             base_covar_module, inducing_points=inducing_points, likelihood=likelihood
         )
