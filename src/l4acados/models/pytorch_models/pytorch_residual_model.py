@@ -1,5 +1,4 @@
 import torch
-from torch.func import vmap, jacrev, jacfwd
 from typing import Optional
 
 from l4acados.models import ResidualModel

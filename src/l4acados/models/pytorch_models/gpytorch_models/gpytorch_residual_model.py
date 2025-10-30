@@ -1,7 +1,6 @@
 from typing import Optional
 import numpy as np
 import torch
-from torch.func import vmap, jacrev, jacfwd
 import gpytorch
 
 from ..pytorch_feature_selector import PyTorchFeatureSelector
