@@ -38,34 +38,11 @@ Integrate learning-based Python models into acados for real-time model predictiv
 
 ## Installation
 
-### Install `acados`
+### Prerequisites
 
-1. Clone
-    ```bash
-    git submodule update --recursive --init external/acados
-    ```
-1. Build the submodule `acados` according to the [installation instructions](https://docs.acados.org/installation/index.html):
-    ```bash
-    mkdir -p external/acados/build
-    cd external/acados/build
-    cmake -DACADOS_PYTHON=ON .. # do not forget the ".."
-    make install -j4
-    ```
+- Install [`acados`](https://docs.acados.org/installation/index.html) and its [Python interface](https://docs.acados.org/python_interface/index.html).
 
-    > You can also install `acados` separately; in this case, refer to the acados version of the submodule in case you encounter errors with a newer version of `acados`.
-
-2. Install acados Python interface
-    ```bash
-    pip install -e external/acados/interfaces/acados_template
-    ```
-
-3. Set environment variables (where `$PROJECT_DIR` is the directory you cloned the repository into in Step 1):
-    ```bash
-    export ACADOS_SOURCE_DIR=$PROJECT_DIR/external/acados
-    export LD_LIBRARY_PATH=$ACADOS_SOURCE_DIR/lib
-    ```
-
-### Install `L4acados` with optional dependencies of your choice
+### `L4acados`
 
 Install `L4acados` with optional dependencies of your choice
 
@@ -80,6 +57,7 @@ Available options:
 - `[gpytorch-exo]`: GpyTorch models with online-learning improvements.
 - not supported yet: JAX, TensorFlow
 
+> Consider the `Dockerfile` for a full example installation including all test and development dependencies.
 
 ## Contributing
 
@@ -87,21 +65,30 @@ If you would like to contribute features to `L4acados`, please follow the develo
 
 ### Development installation
 
-1. Install `L4acados` with development dependencies (in addition to the used learning framework, see above):
+1. Install [`L4CasADi`](https://github.com/Tim-Salzmann/l4casadi) (for tests).
+
+2. Install `L4acados` with development dependencies (in addition to the used learning framework, see above):
 
     ```bash
-    pip install -e .[dev]
+    pip install -e .[dev,gpytorch-exo]
     ```
 
-2. Sync notebooks with jupytext:
+3. Sync notebooks with jupytext:
     ```bash
     jupytext --set-formats ipynb,py examples/*/*.ipynb
     ```
 
-3. Add pre-commit hooks
+4. Add pre-commit hooks
     ```bash
     pre-commit install
     ```
+
+5. Run tests
+    ```bash
+    pytest --ignore external/
+    ```
+
+> Consider the `Dockerfile` for a full example installation including all test and development dependencies.
 
 ## Citing us
 

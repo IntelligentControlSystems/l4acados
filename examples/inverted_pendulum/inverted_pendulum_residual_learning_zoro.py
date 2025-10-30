@@ -1,11 +1,11 @@
 # ---
 # jupyter:
 #   jupytext:
-#     formats: ipynb,py
+#     formats: ipynb,py:percent
 #     text_representation:
 #       extension: .py
-#       format_name: light
-#       format_version: '1.5'
+#       format_name: percent
+#       format_version: '1.3'
 #       jupytext_version: 1.16.4
 #   kernelspec:
 #     display_name: l4acados_dev
@@ -13,18 +13,16 @@
 #     name: python3
 # ---
 
-# + endofcell="--"
-# # + metadata={}
+# %% endofcell="--"
+# + metadata={}
 import sys, os
 
-sys.path += ["../../external/"]
-
-# # + metadata={}
+# + metadata={}
 # %load_ext autoreload
 # %autoreload 1
 # %aimport l4acados
 
-# # + metadata={}
+# + metadata={}
 import numpy as np
 from scipy.stats import norm
 import casadi as cas
@@ -54,12 +52,12 @@ from inverted_pendulum_model_acados import (
 from utils import *
 
 # gpytorch_utils
-from gpytorch_utils.gp_hyperparam_training import (
+from gp_hyperparam_training import (
     generate_train_inputs_acados,
     generate_train_outputs_at_inputs,
     train_gp_model,
 )
-from gpytorch_utils.gp_utils import (
+from gp_utils import (
     gp_data_from_model_and_path,
     gp_derivative_data_from_model_and_path,
     plot_gp_data,
@@ -88,11 +86,11 @@ from l4acados.models.pytorch_models.gpytorch_models.gpytorch_gp import (
 #
 # The model setup and controller definition can be found in the functions `export_simplependulum_ode_model()`, `export_ocp_nominal()` in the `inverted_pendulum_model_acados.py` file.
 
-# # + metadata={}
+# + metadata={}
 # build C code again?
 build_c_code = True
 
-# # + metadata={}
+# + metadata={}
 # discretization
 N = 30
 T = 5
@@ -104,7 +102,7 @@ nx = 2
 nu = 1
 
 
-# # + metadata={}
+# + metadata={}
 prob_x = 0.95
 prob_tighten = norm.ppf(prob_x)
 
@@ -120,28 +118,28 @@ Sigma_W = np.array([[w_theta**2, 0], [0, w_omega**2]])
 
 # ## Set up nominal solver
 
-# # + metadata={}
+# + metadata={}
 ocp_init = export_ocp_nominal(N, T, model_name="simplependulum_ode_init")
 ocp_init.solver_options.nlp_solver_type = "SQP"
 
-# # + metadata={}
+# + metadata={}
 ocp_init.solver_options.Tsim
 
-# # + metadata={}
+# + metadata={}
 acados_ocp_init_solver = AcadosOcpSolver(
     ocp_init, json_file="acados_ocp_init_simplependulum_ode.json"
 )
 
-# # + metadata={}
+# + metadata={}
 ocp_init.solver_options.Tsim
 # -
 
 # ## Open-loop planning with nominal solver
 
-# # + metadata={}
+# + metadata={}
 X_init, U_init = get_solution(acados_ocp_init_solver, x0)
 
-# # + metadata={}
+# + metadata={}
 # integrator for nominal model
 sim = setup_sim_from_ocp(ocp_init)
 
@@ -154,7 +152,7 @@ acados_integrator = AcadosSimSolver(
 #
 # To automatically discretize the model (and obtain sensitivities of the discrete-time model) within the zero-order implementation, we create the `AcadosSimSolver` object to pass to the solver.
 
-# # + metadata={}
+# + metadata={}
 # generate training data for GP with "real model"
 model_actual = export_simplependulum_ode_model(
     model_name=sim.model.name + "_actual", add_residual_dynamics=True
@@ -171,10 +169,10 @@ acados_integrator_actual = AcadosSimSolver(
 
 # ## Simulation results (nominal)
 
-# # + metadata={}
+# + metadata={}
 X_init_sim = simulate_solution(acados_integrator_actual, x0, N, nx, nu, U_init)
 
-# # + metadata={}
+# + metadata={}
 lb_theta = -ocp_init.constraints.lh[0]
 fig, ax = base_plot(lb_theta=lb_theta)
 
@@ -192,7 +190,7 @@ add_plot_trajectory(ax, plot_data_nom_sim, prob_tighten=None, color_fun=plt.cm.B
 #
 # We generate training data (one-step ahead residuals `y_train` for starting point `x_train`) here by running robustified (cautious) solver without GP.
 
-# # + metadata={}
+# + metadata={}
 random_seed = 123
 N_sim_per_x0 = 1
 N_x0 = 10
@@ -211,7 +209,7 @@ y_train = generate_train_outputs_at_inputs(
     x_train, acados_integrator, acados_integrator_actual, Sigma_W
 )
 
-# # + metadata={}
+# + metadata={}
 x_train
 # -
 
@@ -219,7 +217,7 @@ x_train
 #
 # Optimize hyper-parameters of GP model (kernel function parameters, ...)
 
-# # + metadata={}
+# + metadata={}
 x_train_tensor = torch.Tensor(x_train)
 y_train_tensor = torch.Tensor(y_train)
 nout = y_train.shape[1]
@@ -227,7 +225,7 @@ nout = y_train.shape[1]
 likelihood = gpytorch.likelihoods.MultitaskGaussianLikelihood(num_tasks=nout)
 gp_model = BatchIndependentMultitaskGPModel(x_train_tensor, y_train_tensor, likelihood)
 
-# # + metadata={}
+# + metadata={}
 load_gp_model_from_state_dict = False
 state_dict_path_gp_model = "gp_model_state_dict.pth"
 state_dict_path_likelihood = "gp_model_likelihood_state_dict.pth"
@@ -249,14 +247,14 @@ else:
 gp_model.eval()
 likelihood.eval()
 
-# # + metadata={}
+# + metadata={}
 # save GP hyper-params
 torch.save(gp_model.state_dict(), state_dict_path_gp_model)
 torch.save(likelihood.state_dict(), state_dict_path_likelihood)
 torch.save({"x_train": x_train_tensor, "y_train": y_train_tensor}, train_data_path)
 
 
-# # + metadata={}
+# + metadata={}
 data_dict = torch.load(train_data_path)
 data_dict
 # -
@@ -265,10 +263,10 @@ data_dict
 #
 # We plot GP predictions along the predicted trajectory of the robustified solver by projecting the multivariate plot down to a line.
 
-# # + metadata={}
+# + metadata={}
 x_train.shape, y_train.shape
 
-# # + metadata={}
+# + metadata={}
 num_samples = 5
 use_likelihood = False
 
@@ -292,7 +290,7 @@ plot_gp_data([gp_data], marker_size_lim=[1, 15])
 
 # We can also plot the derivative of the GP. Note that the projected Jacobian is not smooth since our path is not smooth either (jump projection direction = jump in Jacobian); however, the actual Jacobian should be smooth here (squared exponential kernel).
 
-# # + metadata={}
+# + metadata={}
 gp_derivative_data = gp_derivative_data_from_model_and_path(
     gp_model, likelihood, x_plot, num_samples=0
 )
@@ -301,7 +299,7 @@ plot_gp_data([gp_derivative_data], marker_size_lim=[5, 20], plot_train_data=Fals
 
 # Compare with plotting along a slice of the dimension. Since we generated training data along the path of the robustified controller, the GP looks pretty untrained along a slice of the coordinates.
 
-# # + metadata={}
+# + metadata={}
 # plot along axis
 x_dim_lims = np.array([[0, np.pi], [-2, 1], [-2, 2]])
 x_dim_slice = np.array([1 * np.pi, 0, 0])
@@ -319,7 +317,7 @@ y_lim_1 = ax[1].get_ylim()
 
 # Jacobian... not much going on away from the data points (this is good!)
 
-# # + metadata={}
+# + metadata={}
 gp_derivative_grid_data = gp_derivative_data_from_model_and_path(
     gp_model, likelihood, x_grid, num_samples=0
 )
@@ -333,21 +331,20 @@ plt.draw()
 # -
 
 # # Residual-Model MPC
-# --
 
-# + endofcell="--" metadata={}
+# %% endofcell="--" metadata={}
 from l4acados.models import GPyTorchResidualModel
 
-# # + metadata={}
+# + metadata={}
 residual_model = GPyTorchResidualModel(gp_model)
 
-# # + metadata={}
+# + metadata={}
 residual_model.evaluate(x_plot_waypts[0:3, :])
 
-# # + metadata={}
+# + metadata={}
 residual_model.jacobian(x_plot_waypts[0:3, :])
 
-# # + metadata={}
+# + metadata={}
 residual_model.value_and_jacobian(x_plot_waypts[0:3, :])
 # -
 
@@ -369,7 +366,7 @@ zoro_description.idx_lh_t = [0]
 zoro_description.idx_lh_e_t = [0]
 ocp_init.zoro_description = zoro_description
 
-# # + metadata={}
+# + metadata={}
 residual_mpc = ZeroOrderGPMPC(
     ocp_init,
     residual_model=residual_model,
@@ -379,7 +376,7 @@ residual_mpc = ZeroOrderGPMPC(
     build_c_code=True,
 )
 
-# # + metadata={}
+# + metadata={}
 for i in range(N):
     residual_mpc.ocp_solver.set(i, "x", X_init[i, :])
     residual_mpc.ocp_solver.set(i, "u", U_init[i, :])
@@ -394,7 +391,7 @@ for i in range(N + 1):
     P_res.append(P_res_arr[i * nx**2 : (i + 1) * nx**2].reshape((nx, nx)))
 P_res = np.array(P_res)
 
-# # + metadata={}
+# + metadata={}
 X_res_sim = np.zeros_like(X_res)
 X_res_sim[0, :] = x0
 for i in range(N):
@@ -403,7 +400,7 @@ for i in range(N):
     acados_integrator_actual.solve()
     X_res_sim[i + 1, :] = acados_integrator_actual.get("x")
 
-# # + metadata={}
+# + metadata={}
 lb_theta = -ocp_init.constraints.lh[0]
 fig, ax = base_plot(lb_theta=lb_theta)
 
@@ -415,14 +412,17 @@ add_plot_trajectory(
     ax, plot_data_res, prob_tighten=prob_tighten, color_fun=plt.cm.Oranges
 )
 add_plot_trajectory(ax, plot_data_res_sim, color_fun=plt.cm.Oranges)
-# --
 
+# %%
 residual_mpc.print_statistics()
 
+# %%
 residual_mpc.get_stats("res_stat_all")
 
+# %%
 residual_mpc.get_stats("residuals")
 
+# %%
 residual_mpc.get_stats("time_preparation_all"), residual_mpc.get_stats(
     "time_preparation"
 )
