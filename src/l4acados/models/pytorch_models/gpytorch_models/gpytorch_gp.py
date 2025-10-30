@@ -80,7 +80,7 @@ class BatchIndependentMultitaskGPModel(gpytorch.models.ExactGP):
         )
 
 
-class BatchIndependentInducingPointGpModel(gpytorch.models.ExactGP):
+class BatchIndependentInducingPointGPModel(gpytorch.models.ExactGP):
     def __init__(
         self,
         train_x: Optional[torch.tensor],

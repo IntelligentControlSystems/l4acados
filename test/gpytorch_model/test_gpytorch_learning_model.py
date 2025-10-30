@@ -526,7 +526,7 @@ def test_inducing_point_gp_from_file(num_tests: int = 6) -> None:
 
         input_selection = PyTorchFeatureSelector(input_feature_selection)
 
-        gpytorch_model = gpytorch_gp.BatchIndependentInducingPointGpModel(
+        gpytorch_model = gpytorch_gp.BatchIndependentInducingPointGPModel(
             input_selection(train_x_tensor),
             train_y_tensor,
             gpytorch.likelihoods.MultitaskGaussianLikelihood(
