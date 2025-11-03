@@ -239,9 +239,9 @@ class KalmanLearningStrategy(DataProcessingStrategy):
 
         # Convert to tensor
         if not torch.is_tensor(x_input):
-            x_input = to_tensor(arr=x_input, device=self.device)
+            x_input, _ = to_tensor(arr=x_input, device=self.device)
         if not torch.is_tensor(y_target):
-            y_target = to_tensor(arr=y_target, device=self.device)
+            y_target, _ = to_tensor(arr=y_target, device=self.device)
 
         # Extend to 2D for further computation
         x_input = torch.atleast_2d(x_input)
