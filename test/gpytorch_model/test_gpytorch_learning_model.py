@@ -10,6 +10,7 @@ from l4acados.models import PyTorchFeatureSelector, GPyTorchResidualModel
 from l4acados.models.pytorch_models.gpytorch_models.gpytorch_data_processing_strategy import (
     OnlineLearningStrategy,
     RecordDataStrategy,
+    KalmanLearningStrategy,
 )
 from l4acados.models.pytorch_models.gpytorch_models import gpytorch_gp
 
@@ -320,7 +321,7 @@ def test_load_gp_from_file(num_tests: int = 6) -> None:
     os.remove(y_data_path)
 
 
-def test_incorporate_new_data(num_tests: int = 6):
+def test_incorporate_new_data(num_tests: int = 6, gp_type: str = "exact") -> None:
     add_data_times_ms = []
     eval_times_ms = []
 
@@ -337,25 +338,66 @@ def test_incorporate_new_data(num_tests: int = 6):
         input_feature_selection[0] = 1  # Make sure input dimension to GP is at least 1
         input_dimension = np.sum(input_feature_selection)
 
-        hyperparameters = {
-            "likelihood.task_noises": torch.rand(residual_dimension) + 1e-4,
-            "covar_module.base_kernel.lengthscale": 10
-            * torch.rand(residual_dimension).reshape(residual_dimension, 1, 1)
-            + 1,
-            "covar_module.outputscale": torch.rand(residual_dimension) + 1e-4,
-        }
+        if gp_type == "exact":
+            hyperparameters = {
+                "likelihood.task_noises": torch.rand(residual_dimension) + 1e-4,
+                "covar_module.base_kernel.lengthscale": 10
+                * torch.rand(residual_dimension).reshape(residual_dimension, 1, 1)
+                + 1,
+                "covar_module.outputscale": torch.rand(residual_dimension) + 1e-4,
+            }
 
-        input_selection = PyTorchFeatureSelector(input_feature_selection)
+            input_selection = PyTorchFeatureSelector(input_feature_selection)
 
-        gpytorch_gp_model = gpytorch_gp.BatchIndependentMultitaskGPModel(
-            train_x=None,
-            train_y=None,
-            likelihood=gpytorch.likelihoods.MultitaskGaussianLikelihood(
-                num_tasks=residual_dimension,
-            ),
-            input_dimension=input_dimension,
-            residual_dimension=residual_dimension,
-        )
+            gpytorch_gp_model = gpytorch_gp.BatchIndependentMultitaskGPModel(
+                train_x=None,
+                train_y=None,
+                likelihood=gpytorch.likelihoods.MultitaskGaussianLikelihood(
+                    num_tasks=residual_dimension,
+                ),
+                input_dimension=input_dimension,
+                residual_dimension=residual_dimension,
+            )
+
+            learning_strategy = OnlineLearningStrategy(max_points_online)
+
+        elif gp_type == "spatio-temporal":
+            hyperparameters = {
+                "likelihood.task_noises": torch.rand(residual_dimension) + 1e-4,
+                "covar_module.kernels.0.base_kernel.lengthscale": 10
+                * torch.rand(residual_dimension).reshape(residual_dimension, 1, 1)
+                + 1,
+                "covar_module.kernels.0.outputscale": torch.rand(residual_dimension)
+                + 1e-4,
+                "covar_module.kernels.1.lengthscale": 10
+                * torch.rand(residual_dimension).reshape(residual_dimension, 1, 1)
+                + 1,
+            }
+
+            input_selection = PyTorchFeatureSelector(
+                input_selection=input_feature_selection, time_delta=np.random.rand()
+            )
+
+            gpytorch_gp_model = (
+                gpytorch_gp.BatchIndependentApproximateSpatioTemporalGPModel(
+                    train_x=None,
+                    train_y=None,
+                    inducing_points=torch.rand(max_points_online, input_dimension),
+                    likelihood=gpytorch.likelihoods.MultitaskGaussianLikelihood(
+                        num_tasks=residual_dimension,
+                    ),
+                    spatial_input_dimension=input_dimension,
+                    residual_dimension=residual_dimension,
+                    dt=input_selection.time_delta,
+                )
+            )
+
+            learning_strategy = KalmanLearningStrategy()
+
+        else:
+            raise ValueError(
+                f"Unknown gp_type '{gp_type}'. Supported types are 'exact' and 'spatio-temporal'."
+            )
 
         gpytorch_gp_model.initialize(**hyperparameters)
 
@@ -365,7 +407,7 @@ def test_incorporate_new_data(num_tests: int = 6):
         gp = GPyTorchResidualModel(
             gp_model=gpytorch_gp_model,
             feature_selector=input_selection,
-            data_processing_strategy=OnlineLearningStrategy(max_points_online),
+            data_processing_strategy=learning_strategy,
         )
 
         gp.value_and_jacobian(torch.rand(1, state_dimension))
@@ -391,12 +433,17 @@ def test_incorporate_new_data(num_tests: int = 6):
             )
             eval_times_ms.append((perf_counter() - time_before) * 1e3)
 
-        assert gp.gp_model.train_inputs[0].shape == torch.Size(
-            [min(sim_steps_list[i], max_points_online), sum(input_feature_selection)]
-        )
-        assert gp.gp_model.train_targets.shape == torch.Size(
-            [min(sim_steps_list[i], max_points_online), residual_dimension]
-        )
+        # Spatio-temporal GP does currently not store training data points added online
+        if gp_type == "exact":
+            assert gp.gp_model.train_inputs[0].shape == torch.Size(
+                [
+                    min(sim_steps_list[i], max_points_online),
+                    sum(input_feature_selection),
+                ]
+            )
+            assert gp.gp_model.train_targets.shape == torch.Size(
+                [min(sim_steps_list[i], max_points_online), residual_dimension]
+            )
 
     print(
         f"data adding avg over {len(add_data_times_ms)} "
@@ -596,5 +643,7 @@ if __name__ == "__main__":
     test_load_gp_from_file()
     print(5 * "\n")
     test_incorporate_new_data()
+    print(5 * "\n")
+    test_incorporate_new_data(gp_type="spatio-temporal")
     print(5 * "\n")
     test_inducing_point_gp_from_file()
