@@ -321,7 +321,7 @@ def test_load_gp_from_file(num_tests: int = 6) -> None:
     os.remove(y_data_path)
 
 
-def test_incorporate_new_data(num_tests: int = 6, gp_type: str = "exact") -> None:
+def _test_incorporate_new_data(num_tests: int = 6, gp_type: str = "exact") -> None:
     add_data_times_ms = []
     eval_times_ms = []
 
@@ -453,6 +453,14 @@ def test_incorporate_new_data(num_tests: int = 6, gp_type: str = "exact") -> Non
         f"gp eval times over {len(eval_times_ms)} "
         f"trials: {np.average(eval_times_ms):.4f} ms."
     )
+
+
+def test_incorporate_new_data_exact():
+    _test_incorporate_new_data(gp_type="exact")
+
+
+def test_incorporate_new_data_spatiotemporal():
+    _test_incorporate_new_data(gp_type="spatio-temporal")
 
 
 def train_gp_model(
@@ -642,8 +650,8 @@ if __name__ == "__main__":
     print(5 * "\n")
     test_load_gp_from_file()
     print(5 * "\n")
-    test_incorporate_new_data()
+    test_incorporate_new_data_exact()
     print(5 * "\n")
-    test_incorporate_new_data(gp_type="spatio-temporal")
+    test_incorporate_new_data_spatiotemporal()
     print(5 * "\n")
     test_inducing_point_gp_from_file()
